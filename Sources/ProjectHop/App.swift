@@ -133,20 +133,23 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         autoName.state = automaticNaming ? .on : .off
         autoName.toolTip = "Utilise le modèle local d’Apple pour nommer les fenêtres qui s’ouvrent ensuite."
         menu.addItem(autoName)
-        let namingStatus = NSMenuItem(title: "Nommage local · Aucune demande", action: nil, keyEquivalent: "")
+        let namingStatus = NSMenuItem(title: "Aucun nommage", action: nil, keyEquivalent: "")
         menu.addItem(namingStatus)
         namingObservation = store.$namingStatus.sink { [weak button = item.button, weak namingStatus] status in
             let active = status?.isActive == true
             let time = status?.startedAt.map { "\($0.formatted(date: .omitted, time: .standard)) · " } ?? ""
-            let text = status.map { time + $0.text } ?? "Nommage local · Aucune demande"
+            let text = status?.text ?? "Aucun nommage"
             namingStatus?.title = text
-            button?.toolTip = "ProjectHop · \(text)"
+            button?.toolTip = "ProjectHop · \(time)\(text)"
             button?.image = active
                 ? NSImage(systemSymbolName: "sparkles", accessibilityDescription: text)
                 : ProjectHopIcon.menuBarImage
             button?.setAccessibilityLabel(active ? text : "ProjectHop")
         }
         menu.addItem(.separator())
+        if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+            menu.addItem(NSMenuItem(title: "Version \(version)", action: nil, keyEquivalent: ""))
+        }
         menu.addItem(withTitle: "Quitter ProjectHop", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
 

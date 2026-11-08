@@ -31,7 +31,7 @@ final class GroupStore: ObservableObject {
 
         var text: String {
             switch self {
-            case let .requesting(count, _): "Nommage local en cours (\(count) fenêtre\(count == 1 ? "" : "s"))…"
+            case let .requesting(count, _): "Nommage de \(count) fenêtre\(count == 1 ? "" : "s")…"
             case let .finished(message, _): message
             }
         }
@@ -244,8 +244,8 @@ final class GroupStore: ObservableObject {
         }
         guard !candidates.isEmpty else {
             namingStatus = .finished(selected == nil && windows?.all.isEmpty == false
-                ? "Les fenêtres détectées ont déjà un nom personnalisé."
-                : "Aucune fenêtre ouverte à renommer.")
+                ? "Fenêtres déjà nommées."
+                : "Aucune fenêtre à nommer.")
             return
         }
         name(candidates, previousNames: previousNames)
@@ -259,7 +259,7 @@ final class GroupStore: ObservableObject {
         return Task(priority: .utility) {
             let suggestions = await LocalWindowNames.suggest(for: candidates)
             guard !Task.isCancelled else {
-                namingStatus = .finished("Nommage automatique arrêté.", startedAt: startedAt)
+                namingStatus = .finished("Nommage arrêté.", startedAt: startedAt)
                 return
             }
             do {
@@ -268,10 +268,10 @@ final class GroupStore: ObservableObject {
                 defer { windowNames = WindowNames.read(for: live) }
                 let result = try WindowNames.apply(suggestions, for: candidates.map(\.key), to: live,
                                                    previousNames: previousNames)
-                namingStatus = .finished(result.message, startedAt: startedAt)
+                namingStatus = .finished(result.summary, startedAt: startedAt)
                 namingLog.notice("Noms appliqués : \(result.suggested, privacy: .public) par le modèle local, \(result.fallback, privacy: .public) avec le nom de l’app")
             } catch {
-                namingStatus = .finished(error.localizedDescription, startedAt: startedAt)
+                namingStatus = .finished("Échec du nommage.", startedAt: startedAt)
                 namingLog.error("Renommage interrompu : \(error.localizedDescription, privacy: .private)")
             }
         }

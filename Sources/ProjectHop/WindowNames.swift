@@ -7,9 +7,13 @@ enum WindowNames {
         fileprivate(set) var fallback = 0
         var count: Int { suggested + fallback }
 
-        var message: String {
+        var summary: String {
             guard count > 0 else { return "Aucun nouveau nom appliqué." }
-            let summary = "\(count) nom\(count == 1 ? "" : "s") mis à jour"
+            return "\(count) nom\(count == 1 ? "" : "s") mis à jour"
+        }
+
+        var message: String {
+            guard count > 0 else { return summary }
             if fallback == 0 { return "\(summary) avec le modèle local d’Apple." }
             return "\(summary) (\(suggested) avec Apple Intelligence, \(fallback) avec le nom de l’app)."
         }
