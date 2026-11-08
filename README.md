@@ -24,7 +24,7 @@ Ouvre le sélecteur avec **⌥ Tab**, puis fais défiler verticalement pour pass
 
 ## Installer ProjectHop
 
-Il faut un Mac Apple Silicon sous macOS 27.2 ou version ultérieure. Choisis une variante.
+Les deux variantes 2.2.2 ciblent macOS 26.0 ou version ultérieure sur Mac Apple Silicon. Le carrousel et le passage entre bureaux restent à valider sur Tahoe.
 
 | Variante | Fonctionnement |
 | --- | --- |
@@ -101,6 +101,8 @@ projecthop=/Applications/ProjectHop.app/Contents/MacOS/ProjectHop
 ## Compiler depuis les sources
 
 Ouvre `ProjectHop.xcodeproj` dans Xcode avec le SDK macOS 27.2, puis sélectionne le schéma **ProjectHop** ou **ProjectHop Sandbox**. Les deux cibles compilent les mêmes fichiers sous `Sources/` et utilisent la même version dans `Resources/Info.plist`. Le sandbox est activé dans la configuration de la cible Sandbox.
+
+Le minimum de macOS est défini dans `Resources/ProjectHop.xcconfig` et partagé avec `build.sh`.
 
 Pour préparer une mise à jour, compile les deux schémas en configuration **Release** depuis le même commit.
 

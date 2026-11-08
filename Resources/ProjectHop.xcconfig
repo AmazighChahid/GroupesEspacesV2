@@ -6,5 +6,6 @@ ENABLE_HARDENED_RUNTIME = YES
 GENERATE_INFOPLIST_FILE = NO
 INFOPLIST_FILE = Resources/Info.plist
 LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks
+MACOSX_DEPLOYMENT_TARGET = 26.0
 PRODUCT_BUNDLE_IDENTIFIER = fr.groupesespaces.v2
 SWIFT_OBJC_BRIDGING_HEADER = Sources/DockRenderer/DockRenderer.h
