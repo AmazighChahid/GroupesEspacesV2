@@ -22,11 +22,11 @@ Ouvre le sélecteur avec **⌥ Tab**, puis fais défiler verticalement pour pass
 
 [Voir la démo en 1080p avec le son](https://github.com/AmazighChahid/ProjectHop/releases/download/v2.0/GroupesEspacesV2-motion.mp4)
 
-## Installer la version 2.0
+## Installer ProjectHop
 
-Il faut un Mac Apple Silicon sous macOS 27.2 ou version ultérieure. [Télécharger le DMG](https://github.com/AmazighChahid/ProjectHop/releases/download/v2.0/GroupesEspacesV2-2.0.dmg)
+Il faut un Mac Apple Silicon sous macOS 27.2 ou version ultérieure. [Télécharger ProjectHop.dmg](https://github.com/AmazighChahid/ProjectHop/releases/latest/download/ProjectHop.dmg)
 
-1. Ouvre le DMG et glisse **Groupes d’espaces V2**, le nom de ProjectHop dans la version 2.0, dans **Applications**.
+1. Ouvre le DMG et glisse **ProjectHop** dans **Applications**.
 2. Lance l’app et autorise-la dans **Réglages Système → Confidentialité et sécurité → Accessibilité**.
 
 L’app porte une signature de développement, sans notarisation Apple. Si macOS bloque le premier lancement, suis la procédure **Ouvrir quand même**. [Assistance Apple](https://support.apple.com/fr-fr/102445)
