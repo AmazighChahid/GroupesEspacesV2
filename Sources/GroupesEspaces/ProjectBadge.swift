@@ -4,6 +4,7 @@ import AppKit
 final class ProjectBadge: NSView {
     static let height: CGFloat = 34
 
+    private let titleFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
     private let label = NSTextField(labelWithString: "")
     private let settingsButton: NSButton
 
@@ -17,9 +18,9 @@ final class ProjectBadge: NSView {
         layer?.cornerRadius = Self.height / 2
 
         label.alignment = .left
-        label.font = .systemFont(ofSize: 13, weight: .semibold)
+        label.font = titleFont
         label.textColor = .white
-        label.lineBreakMode = .byTruncatingTail
+        label.lineBreakMode = .byClipping
         addSubview(label)
 
         settingsButton.isBordered = false
@@ -35,9 +36,11 @@ final class ProjectBadge: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    func display(title: String, count: Int, above bezel: CGRect) {
-        label.stringValue = "\(title)  ·  \(count)"
-        let labelWidth = min(220, ceil(label.intrinsicContentSize.width))
+    func display(title: String, above bezel: CGRect) {
+        label.stringValue = title
+        label.toolTip = title
+        let textWidth = (title as NSString).size(withAttributes: [.font: titleFont]).width
+        let labelWidth = min(260, ceil(textWidth) + 6)
         let width = labelWidth + 44
         frame = CGRect(x: bezel.midX - width / 2, y: bezel.maxY + 6, width: width, height: Self.height).integral
         label.frame = CGRect(x: 12, y: 8, width: labelWidth, height: 18)

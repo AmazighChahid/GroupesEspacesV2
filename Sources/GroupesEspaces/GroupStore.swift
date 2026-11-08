@@ -82,24 +82,12 @@ final class GroupStore: ObservableObject {
         }
     }
 
-    var ungrouped: [DesktopSpace] {
-        let assigned = Set(groups.flatMap(\.members).compactMap { liveSpace(for: $0)?.id })
-        return spaces.filter { !assigned.contains($0.id) }
-    }
-
     func liveSpace(for member: SpaceReference) -> DesktopSpace? {
         if let exact = spaces.first(where: { $0.reference.id == member.id }) { return exact }
         guard member.kind == .fullScreen, let app = member.bundleID else { return nil }
         let claimed = groups.flatMap(\.members).filter { $0.bundleID == app }
         let candidates = spaces.filter { $0.kind == .fullScreen && $0.bundleID == app }
         return claimed.count == 1 && candidates.count == 1 ? candidates.first : nil
-    }
-
-    func desktopDestination(for group: SpaceGroup) -> DesktopSpace? {
-        let desktops = group.members.compactMap { liveSpace(for: $0) }.filter { $0.kind == .desktop }
-        return desktops.first { $0.reference.id == group.lastVisited }
-            ?? desktops.first
-            ?? projectWindows(in: group.id).lazy.compactMap { self.location(for: $0) }.first { $0.kind == .desktop }
     }
 
     func addGroup() -> UUID {
@@ -124,36 +112,6 @@ final class GroupStore: ObservableObject {
             windowGroups[key] = ""
         }
         saveWindowGroups()
-        save()
-    }
-
-    @discardableResult
-    func assign(_ space: DesktopSpace, to group: UUID?) -> Bool {
-        guard group == nil || groups.contains(where: { $0.id == group }) else { return false }
-        let reference = space.reference
-        if let group, groups.first(where: { $0.id == group })?.members.contains(where: {
-            liveSpace(for: $0)?.id == space.id
-        }) == true { return true }
-
-        let previous = Set(groups.flatMap(\.members).filter { liveSpace(for: $0)?.id == space.id }.map(\.id))
-        for index in groups.indices {
-            groups[index].members.removeAll { previous.contains($0.id) || $0.id == reference.id }
-            if groups[index].lastVisited.map(previous.contains) == true {
-                groups[index].lastVisited = nil
-            }
-        }
-        if let index = groups.firstIndex(where: { $0.id == group }) {
-            groups[index].members.append(reference)
-            if space.isActive { groups[index].lastVisited = reference.id }
-        }
-        save()
-        return true
-    }
-
-    func remove(_ member: SpaceReference, from group: UUID) {
-        guard let index = groups.firstIndex(where: { $0.id == group }) else { return }
-        groups[index].members.removeAll { $0.id == member.id }
-        if groups[index].lastVisited == member.id { groups[index].lastVisited = nil }
         save()
     }
 
@@ -200,11 +158,6 @@ final class GroupStore: ObservableObject {
         return containing.first { $0.kind == .fullScreen }
             ?? containing.first(where: \.isActive)
             ?? containing.first
-    }
-
-    func showsSpaceEntry(_ space: DesktopSpace?) -> Bool {
-        guard let space, space.kind == .fullScreen else { return true }
-        return windows?.bySpace[space.id]?.isEmpty != false
     }
 
     @discardableResult

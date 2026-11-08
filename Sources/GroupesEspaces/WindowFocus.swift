@@ -140,18 +140,21 @@ enum WindowFocus {
         }
     }
 
+    static func visibleWindowIDs(pid: pid_t) -> [CGWindowID] {
+        let rows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
+        return rows.compactMap { row in
+            guard row[kCGWindowOwnerPID as String] as? pid_t == pid,
+                  row[kCGWindowLayer as String] as? Int == 0 else { return nil }
+            return row[kCGWindowNumber as String] as? CGWindowID
+        }
+    }
+
     static func frontVisibleWindowID(pid: pid_t) -> CGWindowID? {
-        let rows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]]
-        return rows?.first {
-            $0[kCGWindowOwnerPID as String] as? pid_t == pid && $0[kCGWindowLayer as String] as? Int == 0
-        }?[kCGWindowNumber as String] as? CGWindowID
+        visibleWindowIDs(pid: pid).first
     }
 
     static func isWindowVisible(pid: pid_t, id: CGWindowID) -> Bool {
-        let rows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]]
-        return rows?.contains {
-            $0[kCGWindowOwnerPID as String] as? pid_t == pid && $0[kCGWindowNumber as String] as? CGWindowID == id
-        } == true
+        visibleWindowIDs(pid: pid).contains(id)
     }
 
     static func focusedWindowID(pid: pid_t) -> CGWindowID? {

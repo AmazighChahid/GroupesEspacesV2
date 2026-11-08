@@ -106,11 +106,39 @@ static BOOL LoadDockLayers(void) {
     return YES;
 }
 
-- (CGRect)itemFrameAtIndex:(NSInteger)index {
+- (CGRect)iconFrameAtIndex:(NSInteger)index image:(CGImageRef)image {
     NSArray<CALayer *> *tiles = [_layer axItemLayers];
     if (index < 0 || (NSUInteger)index >= tiles.count) return CGRectNull;
     CALayer *tile = tiles[index];
-    return [_layer convertRect:tile.bounds fromLayer:tile];
+    CGRect bounds = tile.bounds;
+
+    // The Dock draws the image across the tile, including its transparent margins.
+    enum { sampleSize = 64 };
+    uint8_t alpha[sampleSize * sampleSize] = {0};
+    CGContextRef context = CGBitmapContextCreate(alpha, sampleSize, sampleSize, 8, sampleSize,
+                                                NULL, (CGBitmapInfo)kCGImageAlphaOnly);
+    if (context) {
+        CGContextDrawImage(context, CGRectMake(0, 0, sampleSize, sampleSize), image);
+        CGContextRelease(context);
+
+        int left = sampleSize, top = sampleSize, right = -1, bottom = -1;
+        for (int y = 0; y < sampleSize; ++y) {
+            for (int x = 0; x < sampleSize; ++x) {
+                if (alpha[y * sampleSize + x] < 128) continue;
+                left = MIN(left, x);
+                top = MIN(top, y);
+                right = MAX(right, x);
+                bottom = MAX(bottom, y);
+            }
+        }
+        if (right >= left && bottom >= top) {
+            CGFloat dx = bounds.size.width / sampleSize;
+            CGFloat dy = bounds.size.height / sampleSize;
+            bounds = CGRectMake(bounds.origin.x + left * dx, CGRectGetMaxY(bounds) - (bottom + 1) * dy,
+                                (right - left + 1) * dx, (bottom - top + 1) * dy);
+        }
+    }
+    return [_layer convertRect:bounds fromLayer:tile];
 }
 
 - (NSInteger)itemAtPoint:(CGPoint)point {

@@ -6,11 +6,6 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
-    struct MorphOrigin {
-        let screenFrame: CGRect
-        let tileSize: UInt32
-    }
-
     enum Filter: Equatable {
         case all, project(UUID), unassigned
     }
@@ -33,16 +28,21 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
         override var canBecomeKey: Bool { true }
     }
 
+    private struct RemoveBadge {
+        let button: NSButton
+        let iconFrame: CGRect
+    }
+
     private let store: GroupStore
     private let activate: (SpaceWindow) -> Void
     private let report: (String) -> Void
-    private let organize: (MorphOrigin?) -> Void
+    private let organize: (CGRect?) -> Void
     private var panel: Panel?
     private var host: NSView?
     private var projectBadge: ProjectBadge?
     private var searchButton: NSButton?
     private var searchField: NSSearchField?
-    private var removeButtons: [NSButton] = []
+    private var removeBadges: [RemoveBadge] = []
     private var searching = false
     private var scrollDistance = CGPoint.zero
     private var scrollHandled = false
@@ -60,7 +60,7 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
     private var lastPointerLocation: CGPoint?
 
     init(store: GroupStore, activate: @escaping (SpaceWindow) -> Void,
-         report: @escaping (String) -> Void, organize: @escaping (MorphOrigin?) -> Void) {
+         report: @escaping (String) -> Void, organize: @escaping (CGRect?) -> Void) {
         self.store = store
         self.activate = activate
         self.report = report
@@ -104,8 +104,14 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
         guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
         let appWindows = windows(for: .all).filter { $0.ownerPID == pid }
         guard !appWindows.isEmpty else { return }
-        let windowID = WindowFocus.focusedWindowID(pid: pid) ?? WindowFocus.frontVisibleWindowID(pid: pid)
-        let focused = appWindows.first { $0.id == windowID }
+        let activeWindows = appWindows.filter { store.location(for: $0)?.isActive != false }
+        let activeIDs = Set(activeWindows.map(\.id))
+        let visibleIDs = WindowFocus.visibleWindowIDs(pid: pid).filter { activeIDs.contains($0) }
+        // AX can report a focused window on a different Space after AXRaise.
+        let focusedID = WindowFocus.focusedWindowID(pid: pid).flatMap { visibleIDs.contains($0) ? $0 : nil }
+            ?? visibleIDs.first
+        let focused = activeWindows.first { $0.id == focusedID }
+            ?? (activeWindows.count == 1 ? activeWindows.first : nil)
         foreground = (pid, focused?.id)
         if adjustFilter, !windows(for: filter).contains(where: { window in
             window.ownerPID == pid && (focused == nil || window.id == focused?.id)
@@ -239,7 +245,7 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
         host.layer = renderer.layer
         host.wantsLayer = true
         self.renderer = renderer
-        var rendered: [SpaceWindow] = []
+        var rendered: [(window: SpaceWindow, image: CGImage)] = []
         for entry in entries {
             let icon = NSRunningApplication(processIdentifier: entry.ownerPID)?.icon
                 ?? NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
@@ -247,9 +253,9 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
             var rect = NSRect(x: 0, y: 0, width: 128, height: 128)
             guard let image = icon.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { continue }
             renderer.addIcon(image, title: labels[entry.key] ?? entry.label)
-            rendered.append(entry)
+            rendered.append((entry, image))
         }
-        entries = rendered
+        entries = rendered.map(\.window)
         if !entries.isEmpty {
             renderer.layout()
             selected = min(selected, entries.count - 1)
@@ -269,33 +275,35 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
         }
 
         projectBadge.isHidden = searching
-        projectBadge.display(title: title(for: filter), count: entries.count, above: bezel)
+        projectBadge.display(title: title(for: filter), above: bezel)
         searchButton.isHidden = searching
         searchButton.frame = CGRect(x: bezel.maxX + 7, y: bezel.midY - 17, width: 34, height: 34)
         searchField.isHidden = !searching
         searchField.frame = CGRect(x: canvas.midX - 145, y: canvas.maxY - 8, width: 290, height: 32)
 
-        removeButtons.forEach { $0.removeFromSuperview() }
-        removeButtons.removeAll()
+        removeBadges.forEach { $0.button.removeFromSuperview() }
+        removeBadges.removeAll()
         if !searching, case .project = filter {
-            for (index, entry) in entries.enumerated() {
-                let item = renderer.itemFrame(at: index).offsetBy(dx: canvas.minX, dy: canvas.minY)
-                guard !item.isNull, !item.isEmpty else { continue }
-                let button = makeButton(symbol: "minus", label: "Retirer \(labels[entry.key] ?? entry.appName) du projet",
+            for (index, entry) in rendered.enumerated() {
+                let icon = renderer.iconFrame(at: index, image: entry.image).offsetBy(dx: canvas.minX, dy: canvas.minY)
+                guard !icon.isNull, !icon.isEmpty else { continue }
+                let name = labels[entry.window.key] ?? entry.window.appName
+                let button = makeButton(symbol: "minus", label: "Retirer \(name) du projet",
                                         action: #selector(removeFromProject(_:)))
-                let size = min(21, max(12, item.width * 0.42))
-                let inset = item.width * 0.08
-                button.frame = CGRect(x: item.maxX - inset - size / 2, y: item.maxY - inset - size / 2,
+                let size = min(20, max(12, icon.width * 0.28))
+                button.frame = CGRect(x: icon.maxX - size * 0.75, y: icon.maxY - size * 0.75,
                                       width: size, height: size).integral
                 button.layer?.cornerRadius = button.frame.height / 2
                 button.tag = index
+                button.isHidden = true
                 panel.contentView?.addSubview(button)
-                removeButtons.append(button)
+                removeBadges.append(RemoveBadge(button: button, iconFrame: icon))
             }
         }
 
         if !panel.isVisible { panel.orderFrontRegardless() }
         if !panel.isKeyWindow { panel.makeKeyAndOrderFront(nil) }
+        updateRemoveBadges(at: panel.mouseLocationOutsideOfEventStream)
         if direction != 0 && !entries.isEmpty && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             let slide = CABasicAnimation(keyPath: "transform.translation.y")
             slide.fromValue = CGFloat(-direction) * 22
@@ -303,7 +311,7 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
             slide.duration = 0.19
             slide.timingFunction = CAMediaTimingFunction(name: .easeOut)
             renderer.layer.add(slide, forKey: "projectSlide")
-            for button in removeButtons { button.layer?.add(slide, forKey: "projectSlide") }
+            for badge in removeBadges { badge.button.layer?.add(slide, forKey: "projectSlide") }
         }
         monitorEvents()
         return true
@@ -361,17 +369,11 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
     }
 
     @objc private func openProjectSettings() {
-        var origin: MorphOrigin?
-        if let panel, let host, let renderer {
-            let frame = renderer.bezelFrame
-            if !frame.isNull, !frame.isEmpty {
-                let tile = renderer.itemFrame(at: 0)
-                let tileSize: UInt32 = tile.isNull || tile.isEmpty ? 44 : UInt32(tile.width.rounded())
-                origin = MorphOrigin(screenFrame: panel.convertToScreen(host.convert(frame, to: nil)),
-                                     tileSize: tileSize)
-            }
+        guard let panel, let host, let frame = renderer?.bezelFrame, !frame.isNull, !frame.isEmpty else {
+            organize(nil)
+            return
         }
-        organize(origin)
+        organize(panel.convertToScreen(host.convert(frame, to: nil)))
     }
 
     @objc private func openSearch() {
@@ -489,8 +491,17 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
             }
         }
         if outsideMonitor == nil {
-            outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                MainActor.assumeIsolated { self?.dismiss() }
+            var events: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
+            if !WindowFocus.isTrusted { events.insert(.mouseMoved) }
+            outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] event in
+                let isMovement = event.type == .mouseMoved
+                MainActor.assumeIsolated {
+                    if isMovement {
+                        self?.updatePointer(at: NSEvent.mouseLocation)
+                    } else {
+                        self?.dismiss()
+                    }
+                }
             }
         }
     }
@@ -500,18 +511,33 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
         updatePointer(at: CGPoint(x: quartzPoint.x, y: primary.frame.maxY - quartzPoint.y))
     }
 
+    private func updateRemoveBadges(at point: CGPoint) {
+        // Keep the badge visible while crossing from the icon to the button.
+        let hovered = removeBadges.first {
+            !$0.button.isHidden && $0.button.frame.contains(point)
+        } ?? removeBadges.first {
+            $0.iconFrame.contains(point)
+        }
+        for badge in removeBadges {
+            let hidden = badge.button !== hovered?.button
+            if badge.button.isHidden != hidden { badge.button.isHidden = hidden }
+        }
+    }
+
     private func overControl(_ point: CGPoint) -> Bool {
         if projectBadge?.contains(point) == true { return true }
         let controls: [NSControl?] = [searchButton, searchField]
-        return (controls.compactMap { $0 } + removeButtons).contains {
-            !$0.isHidden && $0.bounds.contains($0.convert(point, from: nil))
+        if controls.compactMap({ $0 }).contains(where: { !$0.isHidden && $0.frame.contains(point) }) {
+            return true
         }
+        return removeBadges.contains { !$0.button.isHidden && $0.button.frame.contains(point) }
     }
 
     private func updatePointer(at screenPoint: CGPoint) {
         guard let panel, panel.isVisible, screenPoint != lastPointerLocation else { return }
         lastPointerLocation = screenPoint
         let point = panel.convertPoint(fromScreen: screenPoint)
+        updateRemoveBadges(at: point)
         guard !overControl(point), let index = item(at: point) else {
             selectedByHover = false
             return

@@ -56,7 +56,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     private var setupPanel: GroupPanel?
     private var refreshTimer: Timer?
     private var morphTimer: Timer?
-    private var editorRenderer: GELayerRenderer?
+    private var measuredEditorHeight: CGFloat?
     private var outsideMonitor: Any?
     private var escapeMonitor: Any?
     private var switchTask: Task<Void, Never>?
@@ -144,7 +144,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func showProjectEditor(from origin: NativeSwitcher.MorphOrigin? = nil) {
+    private func showProjectEditor(from origin: CGRect? = nil) {
         nativeSwitcher.dismiss()
         showBar(from: origin)
     }
@@ -214,21 +214,22 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         store.refresh(includeWindows: panel?.isVisible == true)
     }
 
-    private func showBar(from origin: NativeSwitcher.MorphOrigin? = nil) {
+    private func showBar(from origin: CGRect? = nil) {
         store.refresh(includeWindows: true)
         if let panel, panel.isVisible {
             panel.makeKeyAndOrderFront(nil)
             return
         }
 
-        let center = origin.map { CGPoint(x: $0.screenFrame.midX, y: $0.screenFrame.midY) } ?? NSEvent.mouseLocation
+        let center = origin.map { CGPoint(x: $0.midX, y: $0.midY) } ?? NSEvent.mouseLocation
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(center) }) ?? NSScreen.main else { return }
         let visible = screen.visibleFrame
-        let size = CGSize(width: min(1060, visible.width - 32), height: min(620, visible.height - 32))
+        let available = CGSize(width: visible.width - 32, height: visible.height - 32)
+        let size = GroupBar.openingSize(for: store, available: available)
         let target = CGRect(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2,
                             width: size.width, height: size.height).integral
         let source = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : origin
-        let windowFrame = source.map { target.union($0.screenFrame).integral } ?? target
+        let windowFrame = source.map { target.union($0).integral } ?? target
         let panel = GroupPanel(contentRect: windowFrame, styleMask: [.borderless, .nonactivatingPanel],
                                backing: .buffered, defer: false)
         panel.title = "Organiser les projets — Groupes d’espaces V2"
@@ -242,27 +243,27 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
 
         let bounds = CGRect(origin: .zero, size: windowFrame.size)
         let content = NSView(frame: bounds)
-        let backdrop = NSView(frame: bounds)
-        backdrop.wantsLayer = true
-        content.addSubview(backdrop)
-
         let editorFrame = target.offsetBy(dx: -windowFrame.minX, dy: -windowFrame.minY)
-        let initialFrame = source?.screenFrame.offsetBy(dx: -windowFrame.minX, dy: -windowFrame.minY) ?? editorFrame
-        let tileSize = source?.tileSize ?? 128
-        let renderer = GELayerRenderer.make(scale: screen.backingScaleFactor, frame: bounds)
-        let hasMaterial = renderer?.setBezelFrame(initialFrame, tileSize: tileSize) == true
-        if hasMaterial, let renderer {
-            editorRenderer = renderer
-            backdrop.layer?.addSublayer(renderer.layer)
-        }
+        let initialFrame = source?.offsetBy(dx: -windowFrame.minX, dy: -windowFrame.minY) ?? editorFrame
+        let backdrop = NSVisualEffectView(frame: initialFrame)
+        backdrop.material = .popover
+        backdrop.blendingMode = .behindWindow
+        backdrop.state = .active
+        backdrop.maskImage = Self.editorMask
+        content.addSubview(backdrop)
 
         let host = NSHostingView(rootView: GroupBar(
             store: store,
-            openSpace: { [weak self] in self?.openSpace($0) },
             openWindow: { [weak self] in self?.openWindow($0) },
             close: { [weak self] in self?.hideBar() },
             openSetup: { [weak self] in self?.authorizeWindows() },
-            nativeBackground: hasMaterial
+            resize: { [weak self, weak panel] height in
+                DispatchQueue.main.async {
+                    guard let self, let panel, self.panel === panel else { return }
+                    self.measuredEditorHeight = height
+                    self.resizeEditor(panel, within: visible)
+                }
+            }
         ))
         host.sizingOptions = []
         host.frame = editorFrame
@@ -270,19 +271,19 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         panel.contentView = content
         self.panel = panel
 
-        if source != nil && hasMaterial {
+        if source != nil {
             host.alphaValue = 0
-        } else if windowFrame != target {
-            panel.setFrame(target, display: false)
-            host.frame = CGRect(origin: .zero, size: target.size)
+        } else {
+            backdrop.autoresizingMask = [.width, .height]
+            host.autoresizingMask = [.width, .height]
         }
         panel.makeKeyAndOrderFront(nil)
 
-        if let source, hasMaterial {
+        if source != nil {
             let started = CACurrentMediaTime()
             let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self, weak panel, weak host, weak backdrop] timer in
                 let finished = MainActor.assumeIsolated {
-                    guard let self, let renderer = self.editorRenderer, let panel, let host, let backdrop else {
+                    guard let self, let panel, let host, let backdrop else {
                         return true
                     }
                     let progress = min(1, (CACurrentMediaTime() - started) / 0.27)
@@ -293,9 +294,8 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
                         width: initialFrame.width + (editorFrame.width - initialFrame.width) * eased,
                         height: initialFrame.height + (editorFrame.height - initialFrame.height) * eased
                     )
-                    let size = UInt32((Double(source.tileSize) + (128 - Double(source.tileSize)) * eased).rounded())
-                    _ = renderer.setBezelFrame(frame, tileSize: size)
-                    host.alphaValue = max(0, (progress - 0.42) / 0.58)
+                    backdrop.frame = frame
+                    host.alphaValue = max(0, (progress - 0.65) / 0.35)
                     if progress == 1 {
                         self.morphTimer = nil
                         if windowFrame != target {
@@ -303,12 +303,10 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
                             panel.setFrame(target, display: false)
                             backdrop.frame = finalBounds
                             host.frame = finalBounds
-                            CATransaction.begin()
-                            CATransaction.setDisableActions(true)
-                            renderer.layer.frame = finalBounds
-                            _ = renderer.setBezelFrame(finalBounds, tileSize: 128)
-                            CATransaction.commit()
                         }
+                        backdrop.autoresizingMask = [.width, .height]
+                        host.autoresizingMask = [.width, .height]
+                        self.resizeEditor(panel, within: visible)
                     }
                     return progress == 1
                 }
@@ -339,29 +337,42 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         }
     }
 
+    private static let editorMask: NSImage = {
+        let radius = GroupBar.cornerRadius
+        let side = radius * 2 + 1
+        let mask = NSImage(size: CGSize(width: side, height: side), flipped: false) { rect in
+            NSColor.white.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        mask.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        mask.resizingMode = .stretch
+        return mask
+    }()
+
+    private func resizeEditor(_ panel: GroupPanel, within visible: CGRect) {
+        guard morphTimer == nil, let measuredEditorHeight else { return }
+        let height = min(measuredEditorHeight, GroupBar.maximumHeight, visible.height - 32)
+        guard panel.frame.height != height else { return }
+        var frame = panel.frame
+        let top = min(frame.maxY, visible.maxY - 16)
+        frame.origin.y = max(visible.minY + 16, top - height)
+        frame.size.height = height
+        panel.setFrame(frame, display: true)
+    }
+
     private func hideBar() {
         panel?.orderOut(nil)
         panel = nil
         morphTimer?.invalidate()
         morphTimer = nil
-        editorRenderer = nil
+        measuredEditorHeight = nil
         refreshTimer?.invalidate()
         refreshTimer = nil
         if let outsideMonitor { NSEvent.removeMonitor(outsideMonitor) }
         if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
         outsideMonitor = nil
         escapeMonitor = nil
-    }
-
-    private func openSpace(_ space: DesktopSpace) {
-        beginSelection {
-            if await self.visit(space) {
-                self.store.refresh()
-            } else if !Task.isCancelled {
-                self.store.message = "Impossible d’ouvrir \(space.name)."
-                self.showBar()
-            }
-        }
     }
 
     private func openWindow(_ selected: SpaceWindow) {
@@ -396,18 +407,13 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
                     }
                 }
                 guard !Task.isCancelled else { return }
-                if !reachedSpace {
-                    self.focusLog.notice("Direct fallback to space \(space.windowServerID, privacy: .public), window \(window.id, privacy: .public)")
-                }
-                if !reachedSpace, !(await self.visit(space)) {
-                    if !Task.isCancelled {
-                        self.store.message = "Impossible d’ouvrir \(space.name)."
-                        self.showBar()
-                    }
+                guard reachedSpace else {
+                    self.focusLog.notice("Space \(space.windowServerID, privacy: .public) not reached for window \(window.id, privacy: .public) (direct switch disabled)")
                     return
                 }
             }
             guard !Task.isCancelled else { return }
+            guard space.map(self.system.isCurrent) != false else { return }
             if !self.isForeground(application) {
                 NSApp.yieldActivation(to: application)
                 _ = application.activate(from: .current)
@@ -415,7 +421,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
             var result = WindowFocus.Result.missingWindow
             for _ in 0..<3 {
                 try? await Task.sleep(for: .milliseconds(100))
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, space.map(self.system.isCurrent) != false else { return }
                 if WindowFocus.isTrusted {
                     result = await Task.detached(priority: .userInitiated) {
                         WindowFocus.raise(pid: window.ownerPID, id: window.id, minimized: window.isMinimized)
@@ -425,26 +431,21 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
                     result = WindowFocus.frontVisibleWindowID(pid: window.ownerPID) == window.id
                         ? .focused : .notAuthorized
                 }
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, space.map(self.system.isCurrent) != false else { return }
                 let rightApplication = self.isForeground(application)
-                let rightSpace = space.map(self.system.isCurrent) ?? true
-                if result == .focused && rightApplication && rightSpace
+                if result == .focused && rightApplication
                     && WindowFocus.isWindowVisible(pid: window.ownerPID, id: window.id) {
                     self.focusLog.notice("window \(window.id, privacy: .public) focused")
                     self.store.refresh()
                     return
                 }
                 if result == .focused { result = rightApplication ? .differentWindow : .applicationNotActive }
-                if let space, !rightSpace, !(await self.visit(space)) { break }
-                guard !Task.isCancelled else { return }
                 if !rightApplication {
                     _ = application.activate(from: .current)
                 }
             }
             self.focusLog.notice("window \(window.id, privacy: .public) \(result.rawValue, privacy: .public)")
             self.store.message = result.description
-            self.showBar()
-            if result == .notAuthorized && self.verification == nil { WindowFocus.requestAccess() }
         }
     }
 
