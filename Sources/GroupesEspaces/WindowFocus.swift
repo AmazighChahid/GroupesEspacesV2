@@ -92,7 +92,7 @@ enum WindowFocus {
             if result == .success {
                 remember(window, for: key)
             } else if result == .invalidUIElement {
-                knownWindows.withLock { $0.removeValue(forKey: key) }
+                _ = knownWindows.withLock { $0.removeValue(forKey: key) }
             }
             return result
         }
@@ -133,8 +133,8 @@ enum WindowFocus {
 
     private static func remember(_ window: AXUIElement, for key: WindowKey) {
         knownWindows.withLock { windows in
-            if windows[key] == nil, windows.count >= 32, let oldest = windows.keys.first {
-                windows.removeValue(forKey: oldest)
+            if windows[key] == nil, windows.count >= 32, let cachedKey = windows.keys.first {
+                windows.removeValue(forKey: cachedKey)
             }
             windows[key] = WindowHandle(element: window)
         }
