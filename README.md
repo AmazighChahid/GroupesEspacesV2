@@ -8,6 +8,16 @@ ProjectHop est un sélecteur de fenêtres pour macOS. Réunis dans un projet les
 
 ## Démonstration
 
+### Changer de projet au trackpad
+
+Ouvre le sélecteur avec **⌥ Tab**, puis fais défiler verticalement pour passer au projet suivant ou revenir au précédent.
+
+![Capture animée du sélecteur ProjectHop. Un défilement vers le bas passe de Montage à Publication. Un défilement vers le haut revient à Montage.](docs/projecthop-defilement.gif)
+
+[Voir la vidéo en 1080p](https://github.com/AmazighChahid/GroupesEspacesV2/releases/download/v2.0/ProjectHop-defilement.mp4)
+
+### Présentation générale
+
 ![Démo animée du sélecteur. Le raccourci Option Tab rassemble les fenêtres d’un projet réparties sur plusieurs bureaux.](docs/groupes-espaces-v2-demo.gif)
 
 [Voir la démo en 1080p avec le son](https://github.com/AmazighChahid/GroupesEspacesV2/releases/download/v2.0/GroupesEspacesV2-motion.mp4)
