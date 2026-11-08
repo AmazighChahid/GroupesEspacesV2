@@ -6,6 +6,9 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable GELayerRenderer *)rendererWithScale:(CGFloat)scale frame:(CGRect)frame NS_SWIFT_NAME(make(scale:frame:));
 @property(nonatomic, readonly) CALayer *layer;
 @property(nonatomic) NSInteger selection;
+@property(nonatomic, readonly) CGRect bezelFrame;
+- (BOOL)setBezelFrame:(CGRect)frame tileSize:(unsigned int)tileSize;
+- (CGRect)itemFrameAtIndex:(NSInteger)index NS_SWIFT_NAME(itemFrame(at:));
 - (void)addIcon:(CGImageRef)icon title:(NSString *)title NS_SWIFT_NAME(addIcon(_:title:));
 - (void)layout;
 - (NSInteger)itemAtPoint:(CGPoint)point NS_SWIFT_NAME(item(at:));

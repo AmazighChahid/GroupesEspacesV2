@@ -13,6 +13,8 @@
 - (NSInteger)selectedIndex;
 - (void)setSelectedIndex:(NSInteger)index;
 - (NSArray<CALayer *> *)axItemLayers;
+- (CALayer *)_materialRootLayer;
+- (void)_setMaterialLayerFrame:(CGRect)frame tileSize:(unsigned int)tileSize;
 @end
 
 @interface NSObject (DockMaterialEnvironment)
@@ -84,6 +86,32 @@ static BOOL LoadDockLayers(void) {
 - (NSInteger)selection { return [_layer selectedIndex]; }
 
 - (void)setSelection:(NSInteger)selection { [_layer setSelectedIndex:selection]; }
+
+- (CGRect)bezelFrame {
+    if (![_layer respondsToSelector:@selector(_materialRootLayer)]) return CGRectNull;
+    CALayer *material = [_layer _materialRootLayer];
+    return material ? [_layer convertRect:material.bounds fromLayer:material] : CGRectNull;
+}
+
+- (BOOL)setBezelFrame:(CGRect)frame tileSize:(unsigned int)tileSize {
+    SEL selector = @selector(_setMaterialLayerFrame:tileSize:);
+    Method method = class_getInstanceMethod(_layer.class, selector);
+    if (!method || strcmp(method_getTypeEncoding(method), "v52@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16I48")) {
+        return NO;
+    }
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    [_layer _setMaterialLayerFrame:frame tileSize:tileSize];
+    [CATransaction commit];
+    return YES;
+}
+
+- (CGRect)itemFrameAtIndex:(NSInteger)index {
+    NSArray<CALayer *> *tiles = [_layer axItemLayers];
+    if (index < 0 || (NSUInteger)index >= tiles.count) return CGRectNull;
+    CALayer *tile = tiles[index];
+    return [_layer convertRect:tile.bounds fromLayer:tile];
+}
 
 - (NSInteger)itemAtPoint:(CGPoint)point {
     NSArray<CALayer *> *tiles = [_layer axItemLayers];

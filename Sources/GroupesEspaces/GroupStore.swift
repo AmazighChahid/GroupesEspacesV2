@@ -16,8 +16,6 @@ final class GroupStore: ObservableObject {
     @Published private(set) var windowNames: [String: String] = [:]
     @Published private(set) var windowGroups: [String: String]
     @Published private var windowOrder: [String: [String]]
-    @Published private(set) var isNaming = false
-    @Published private(set) var canOpenWindows = WindowFocus.isTrusted
     @Published var message: String?
 
     private let system: SpaceSystem
@@ -48,8 +46,6 @@ final class GroupStore: ObservableObject {
     }
 
     func refresh(includeWindows: Bool = false) {
-        let trusted = WindowFocus.isTrusted
-        if canOpenWindows != trusted { canOpenWindows = trusted }
         guard let current = system.readSpaces(), !current.isEmpty else {
             spaces = []
             windows = nil
@@ -99,12 +95,11 @@ final class GroupStore: ObservableObject {
         return claimed.count == 1 && candidates.count == 1 ? candidates.first : nil
     }
 
-    func destination(for group: SpaceGroup) -> DesktopSpace? {
-        let entries = group.members.filter { showsSpaceEntry(liveSpace(for: $0)) }
-        let last = entries.first { $0.id == group.lastVisited }
-        return last.flatMap { liveSpace(for: $0) }
-            ?? entries.lazy.compactMap { self.liveSpace(for: $0) }.first
-            ?? projectWindows(in: group.id).lazy.compactMap { self.location(for: $0) }.first
+    func desktopDestination(for group: SpaceGroup) -> DesktopSpace? {
+        let desktops = group.members.compactMap { liveSpace(for: $0) }.filter { $0.kind == .desktop }
+        return desktops.first { $0.reference.id == group.lastVisited }
+            ?? desktops.first
+            ?? projectWindows(in: group.id).lazy.compactMap { self.location(for: $0) }.first { $0.kind == .desktop }
     }
 
     func addGroup() -> UUID {
@@ -243,74 +238,6 @@ final class GroupStore: ObservableObject {
         windowOrder = updated
         defaults.set(updated, forKey: windowOrderKey)
         return true
-    }
-
-    @discardableResult
-    func renameWindow(_ window: SpaceWindow, to name: String) -> Bool {
-        guard windows?.all.contains(where: { $0.key == window.key }) == true else {
-            message = "Cette fenêtre a été fermée."
-            return false
-        }
-        do {
-            try WindowNames.write(name, for: window)
-            windowNames[window.key] = WindowNames.read(for: [window])[window.key]
-            message = nil
-            return true
-        } catch {
-            message = error.localizedDescription
-            return false
-        }
-    }
-
-    func refreshNames(for selected: SpaceWindow? = nil) {
-        guard !isNaming else { return }
-        refresh(includeWindows: true)
-        let candidates = (windows?.all ?? []).filter { window in
-            selected.map { $0.key == window.key } ?? (windowNames[window.key] == nil)
-        }
-        guard !candidates.isEmpty else {
-            message = selected == nil && windows?.all.isEmpty == false
-                ? "Les fenêtres détectées ont déjà un nom personnalisé."
-                : "Aucune fenêtre ouverte à renommer."
-            return
-        }
-        let previous = windowNames
-        isNaming = true
-        message = "Claude Code recherche des noms…"
-        Task {
-            defer { isNaming = false }
-            do {
-                let (suggestions, titleCount) = try await Task.detached(priority: .utility) {
-                    let byOwner = Dictionary(grouping: candidates.filter { $0.title == nil }, by: \.ownerPID)
-                    var titles: [CGWindowID: String] = [:]
-                    for (pid, windows) in byOwner {
-                        titles.merge(WindowFocus.titles(pid: pid, ids: Set(windows.map(\.id)))) { first, _ in first }
-                    }
-                    let inputs = candidates.compactMap { window -> ClaudeWindowNames.Input? in
-                        guard let title = window.title ?? titles[window.id], title != window.appName else { return nil }
-                        return .init(id: window.key, app: window.appName, title: title)
-                    }
-                    return (try ClaudeWindowNames.suggest(inputs), inputs.count)
-                }.value
-                if titleCount == 0 && !WindowFocus.isTrusted {
-                    message = "Titres indisponibles. Ouvre ⋯ → Ouvrir les réglages d’accessibilité."
-                    return
-                }
-                refresh(includeWindows: true)
-                var applied = 0
-                for suggestion in suggestions {
-                    guard let live = windows?.all.first(where: { $0.key == suggestion.id }),
-                          windowNames[live.key] == previous[live.key] else { continue }
-                    try WindowNames.write(suggestion.name, for: live)
-                    windowNames[live.key] = suggestion.name
-                    applied += 1
-                }
-                message = applied == 0 ? "Aucun titre suffisamment distinctif pour proposer un nom."
-                    : "\(applied) nom\(applied == 1 ? "" : "s") mis à jour par Claude Code."
-            } catch {
-                message = error.localizedDescription
-            }
-        }
     }
 
     private func saveWindowGroups() {

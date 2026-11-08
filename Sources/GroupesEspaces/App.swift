@@ -1,6 +1,7 @@
 import AppKit
 import Carbon
 import OSLog
+import QuartzCore
 import SwiftUI
 
 @main
@@ -34,7 +35,6 @@ private final class GroupPanel: NSPanel {
 @MainActor
 final class GroupBarApp: NSObject, NSApplicationDelegate {
     private let system = SpaceSystem()
-    private let presentation = SwitcherPresentation()
     private let setupPreference = "firstLaunchSetup.v1"
     private let focusLog = Logger(subsystem: "fr.groupesespaces.v2", category: "WindowFocus")
     private let verification: URL?
@@ -46,17 +46,17 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     }, report: { [weak self] message in
         self?.store.message = message
         self?.showBar()
-    }, organize: { [weak self] in
-        self?.showProjectEditor()
+    }, organize: { [weak self] origin in
+        self?.showProjectEditor(from: origin)
     })
     private var panel: GroupPanel?
-    private var barScreen: NSScreen?
-    private var barSize = CGSize(width: 540, height: 170)
     private var statusItem: NSStatusItem?
     private var hotkeyTap: CFMachPort?
     private var hotkeySource: CFRunLoopSource?
     private var setupPanel: GroupPanel?
     private var refreshTimer: Timer?
+    private var morphTimer: Timer?
+    private var editorRenderer: GELayerRenderer?
     private var outsideMonitor: Any?
     private var escapeMonitor: Any?
     private var switchTask: Task<Void, Never>?
@@ -94,7 +94,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         let select = NSMenuItem(title: "Ouvrir le sélecteur", action: #selector(showNativeSwitcher), keyEquivalent: "")
         select.target = self
         menu.addItem(select)
-        let accessibility = NSMenuItem(title: "Autoriser l’accès aux fenêtres", action: #selector(authorizeWindows), keyEquivalent: "")
+        let accessibility = NSMenuItem(title: "Configurer l’Accessibilité…", action: #selector(authorizeWindows), keyEquivalent: "")
         accessibility.target = self
         menu.addItem(accessibility)
         menu.addItem(.separator())
@@ -105,8 +105,8 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
             self, selector: #selector(spaceDidChange),
             name: NSWorkspace.activeSpaceDidChangeNotification, object: nil
         )
-        if !UserDefaults.standard.bool(forKey: setupPreference) {
-            showSetup()
+        if !UserDefaults.standard.bool(forKey: setupPreference) || !WindowFocus.isTrusted {
+            showSetup(openAccessibility: !WindowFocus.isTrusted)
         } else if ProcessInfo.processInfo.arguments.contains("--show-switcher") {
             showNativeSwitcher()
         }
@@ -144,10 +144,9 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func showProjectEditor() {
+    private func showProjectEditor(from origin: NativeSwitcher.MorphOrigin? = nil) {
         nativeSwitcher.dismiss()
-        setEditing(true)
-        showBar()
+        showBar(from: origin)
     }
 
     @objc private func showNativeSwitcher() {
@@ -157,7 +156,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     }
 
     @objc private func authorizeWindows() {
-        WindowFocus.requestAccess()
+        showSetup(openAccessibility: !WindowFocus.isTrusted)
     }
 
     private func handleShortcut(backwards: Bool) {
@@ -166,14 +165,17 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         nativeSwitcher.shortcut(backwards: backwards)
     }
 
-    private func setEditing(_ isEditing: Bool) {
-        presentation.isEditing = isEditing
-    }
-
     private func showSetup(openAccessibility: Bool = false) {
+        nativeSwitcher.dismiss()
+        if let setupPanel {
+            NSApp.activate()
+            setupPanel.makeKeyAndOrderFront(nil)
+            if openAccessibility { WindowFocus.openSettings() }
+            return
+        }
         hideBar()
         let panel = GroupPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 470, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 470, height: 236),
             styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false
         )
         panel.title = "Configuration de Groupes d’espaces V2"
@@ -183,9 +185,12 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.contentView = NSHostingView(rootView: SetupView(
-            finish: { [weak self] in self?.finishSetup() }
+        let view = NSHostingView(rootView: SetupView(
+            finish: { [weak self] in self?.finishSetup() },
+            accessGranted: { [weak self] in self?.registerHotkey() }
         ))
+        panel.contentView = view
+        panel.setContentSize(view.fittingSize)
         panel.center()
         if let screen = panel.screen {
             let frame = screen.visibleFrame
@@ -201,118 +206,145 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(true, forKey: setupPreference)
         setupPanel?.close()
         setupPanel = nil
-        showBar()
+        registerHotkey()
+        showNativeSwitcher()
     }
 
     @objc private func spaceDidChange() {
         store.refresh(includeWindows: panel?.isVisible == true)
     }
 
-    private func showBar() {
+    private func showBar(from origin: NativeSwitcher.MorphOrigin? = nil) {
         store.refresh(includeWindows: true)
-        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
-        guard let screen else { return }
+        if let panel, panel.isVisible {
+            panel.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let center = origin.map { CGPoint(x: $0.screenFrame.midX, y: $0.screenFrame.midY) } ?? NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(center) }) ?? NSScreen.main else { return }
         let visible = screen.visibleFrame
-        barScreen = screen
-        presentation.availableSize = CGSize(width: visible.width - 32, height: visible.height - 28)
-        let panel = panel ?? createPanel()
-        resizeBar(to: barSize)
-        panel.makeKeyAndOrderFront(nil)
-
-        if outsideMonitor == nil {
-            outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    guard let self, let panel = self.panel, !panel.frame.contains(NSEvent.mouseLocation) else { return }
-                    self.hideBar()
-                }
-            }
-        }
-        if escapeMonitor == nil {
-            escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
-                let isKeyDown = event.type == .keyDown
-                let keyCode = isKeyDown ? Int(event.keyCode) : 0
-                let windowNumber = event.windowNumber
-                let handled = MainActor.assumeIsolated {
-                    guard let self, let panel = self.panel, panel.windowNumber == windowNumber else { return false }
-                    guard isKeyDown else {
-                        return false
-                    }
-                    if keyCode == kVK_Escape {
-                        self.hideBar()
-                        return true
-                    }
-                    guard !(panel.firstResponder is NSTextView), !self.presentation.isEditing else { return false }
-                    switch keyCode {
-                    case kVK_LeftArrow: self.presentation.keys.send(.previous)
-                    case kVK_RightArrow: self.presentation.keys.send(.next)
-                    case kVK_UpArrow: self.presentation.keys.send(.previousProject)
-                    case kVK_DownArrow: self.presentation.keys.send(.nextProject)
-                    case kVK_Return, kVK_ANSI_KeypadEnter:
-                        self.presentation.keys.send(.open)
-                    default: return false
-                    }
-                    return true
-                }
-                return handled ? nil : event
-            }
-        }
-        if refreshTimer == nil {
-            refreshTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.store.refresh(includeWindows: true) }
-            }
-        }
-    }
-
-    private func resizeBar(to size: CGSize) {
-        guard size.width > 0, size.height > 0 else { return }
-        barSize = size
-        guard let panel, let visible = barScreen?.visibleFrame else { return }
-        let width = min(size.width, presentation.availableSize.width)
-        let height = min(size.height, presentation.availableSize.height)
-        let frame = NSRect(x: visible.midX - width / 2, y: visible.midY - height / 2,
-                           width: width, height: height).integral
-        if panel.frame != frame { panel.setFrame(frame, display: true) }
-    }
-
-    private func createPanel() -> GroupPanel {
-        let panel = GroupPanel(
-            contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered, defer: false
-        )
-        panel.title = "Groupes d’espaces V2"
+        let size = CGSize(width: min(1060, visible.width - 32), height: min(620, visible.height - 32))
+        let target = CGRect(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2,
+                            width: size.width, height: size.height).integral
+        let source = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : origin
+        let windowFrame = source.map { target.union($0.screenFrame).integral } ?? target
+        let panel = GroupPanel(contentRect: windowFrame, styleMask: [.borderless, .nonactivatingPanel],
+                               backing: .buffered, defer: false)
+        panel.title = "Organiser les projets — Groupes d’espaces V2"
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        if #available(macOS 26, *) {
-            panel.hasShadow = false
-        } else {
-            panel.hasShadow = true
-        }
+        panel.hasShadow = false
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
+
+        let bounds = CGRect(origin: .zero, size: windowFrame.size)
+        let content = NSView(frame: bounds)
+        let backdrop = NSView(frame: bounds)
+        backdrop.wantsLayer = true
+        content.addSubview(backdrop)
+
+        let editorFrame = target.offsetBy(dx: -windowFrame.minX, dy: -windowFrame.minY)
+        let initialFrame = source?.screenFrame.offsetBy(dx: -windowFrame.minX, dy: -windowFrame.minY) ?? editorFrame
+        let tileSize = source?.tileSize ?? 128
+        let renderer = GELayerRenderer.make(scale: screen.backingScaleFactor, frame: bounds)
+        let hasMaterial = renderer?.setBezelFrame(initialFrame, tileSize: tileSize) == true
+        if hasMaterial, let renderer {
+            editorRenderer = renderer
+            backdrop.layer?.addSublayer(renderer.layer)
+        }
+
         let host = NSHostingView(rootView: GroupBar(
             store: store,
             openSpace: { [weak self] in self?.openSpace($0) },
             openWindow: { [weak self] in self?.openWindow($0) },
             close: { [weak self] in self?.hideBar() },
-            presentation: presentation,
-            setEditing: { [weak self] in self?.setEditing($0) },
-            openSetup: { [weak self] in self?.showSetup() },
-            resize: { [weak self] size in
-                Task { @MainActor in self?.resizeBar(to: size) }
-            }
+            openSetup: { [weak self] in self?.authorizeWindows() },
+            nativeBackground: hasMaterial
         ))
         host.sizingOptions = []
-        panel.contentView = host
+        host.frame = editorFrame
+        content.addSubview(host)
+        panel.contentView = content
         self.panel = panel
-        return panel
+
+        if source != nil && hasMaterial {
+            host.alphaValue = 0
+        } else if windowFrame != target {
+            panel.setFrame(target, display: false)
+            host.frame = CGRect(origin: .zero, size: target.size)
+        }
+        panel.makeKeyAndOrderFront(nil)
+
+        if let source, hasMaterial {
+            let started = CACurrentMediaTime()
+            let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self, weak panel, weak host, weak backdrop] timer in
+                let finished = MainActor.assumeIsolated {
+                    guard let self, let renderer = self.editorRenderer, let panel, let host, let backdrop else {
+                        return true
+                    }
+                    let progress = min(1, (CACurrentMediaTime() - started) / 0.27)
+                    let eased = 1 - pow(1 - progress, 3)
+                    let frame = CGRect(
+                        x: initialFrame.minX + (editorFrame.minX - initialFrame.minX) * eased,
+                        y: initialFrame.minY + (editorFrame.minY - initialFrame.minY) * eased,
+                        width: initialFrame.width + (editorFrame.width - initialFrame.width) * eased,
+                        height: initialFrame.height + (editorFrame.height - initialFrame.height) * eased
+                    )
+                    let size = UInt32((Double(source.tileSize) + (128 - Double(source.tileSize)) * eased).rounded())
+                    _ = renderer.setBezelFrame(frame, tileSize: size)
+                    host.alphaValue = max(0, (progress - 0.42) / 0.58)
+                    if progress == 1 {
+                        self.morphTimer = nil
+                        if windowFrame != target {
+                            let finalBounds = CGRect(origin: .zero, size: target.size)
+                            panel.setFrame(target, display: false)
+                            backdrop.frame = finalBounds
+                            host.frame = finalBounds
+                            CATransaction.begin()
+                            CATransaction.setDisableActions(true)
+                            renderer.layer.frame = finalBounds
+                            _ = renderer.setBezelFrame(finalBounds, tileSize: 128)
+                            CATransaction.commit()
+                        }
+                    }
+                    return progress == 1
+                }
+                if finished { timer.invalidate() }
+            }
+            morphTimer = timer
+            RunLoop.main.add(timer, forMode: .common)
+        }
+
+        outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let panel = self.panel, !panel.frame.contains(NSEvent.mouseLocation) else { return }
+                self.hideBar()
+            }
+        }
+        escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let number = event.windowNumber
+            let key = Int(event.keyCode)
+            let handled = MainActor.assumeIsolated {
+                guard let self, number == self.panel?.windowNumber, key == kVK_Escape else { return false }
+                self.hideBar()
+                return true
+            }
+            return handled ? nil : event
+        }
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.store.refresh(includeWindows: true) }
+        }
     }
 
     private func hideBar() {
-        presentation.dismiss.send(())
         panel?.orderOut(nil)
-        presentation.isEditing = false
+        panel = nil
+        morphTimer?.invalidate()
+        morphTimer = nil
+        editorRenderer = nil
         refreshTimer?.invalidate()
         refreshTimer = nil
         if let outsideMonitor { NSEvent.removeMonitor(outsideMonitor) }
@@ -346,15 +378,27 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
             guard let application = NSRunningApplication(processIdentifier: window.ownerPID) else { return }
             if application.isHidden { application.unhide() }
             if let space, !self.system.isCurrent(space) {
-                let usingAppSwitcherMode = singleWindowApplication
-                    && NSWorkspace.shared.frontmostApplication?.processIdentifier != window.ownerPID
+                let changesApplication = NSWorkspace.shared.frontmostApplication?.processIdentifier != window.ownerPID
+                let usingAppSwitcherMode = singleWindowApplication && changesApplication
                 var reachedSpace = false
                 if WindowFocus.isTrusted, !window.isMinimized {
-                    reachedSpace = await self.system.activateWithSpaceTransition(
-                        pid: window.ownerPID, windowID: window.id, in: space, usingAppSwitcherMode: usingAppSwitcherMode
+                    var requested = changesApplication && self.system.requestActivation(
+                        pid: window.ownerPID, windowID: window.id, usingAppSwitcherMode: usingAppSwitcherMode
                     )
+                    if !usingAppSwitcherMode {
+                        let result = await WindowFocus.raiseForSpaceTransition(pid: window.ownerPID, id: window.id)
+                        guard !Task.isCancelled else { return }
+                        self.focusLog.notice("AXRaise before switching to space \(space.windowServerID, privacy: .public), window \(window.id, privacy: .public): \(result.rawValue, privacy: .public)")
+                        requested = requested || result == .success
+                    }
+                    if requested {
+                        reachedSpace = await self.system.waitForSpaceTransition(to: space)
+                    }
                 }
                 guard !Task.isCancelled else { return }
+                if !reachedSpace {
+                    self.focusLog.notice("Direct fallback to space \(space.windowServerID, privacy: .public), window \(window.id, privacy: .public)")
+                }
                 if !reachedSpace, !(await self.visit(space)) {
                     if !Task.isCancelled {
                         self.store.message = "Impossible d’ouvrir \(space.name)."
@@ -384,7 +428,8 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
                 guard !Task.isCancelled else { return }
                 let rightApplication = self.isForeground(application)
                 let rightSpace = space.map(self.system.isCurrent) ?? true
-                if result == .focused && rightApplication && rightSpace {
+                if result == .focused && rightApplication && rightSpace
+                    && WindowFocus.isWindowVisible(pid: window.ownerPID, id: window.id) {
                     self.focusLog.notice("window \(window.id, privacy: .public) focused")
                     self.store.refresh()
                     return
@@ -470,19 +515,19 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
                 groups.append(group)
             }
 
-            let keyboardTest = CGPreflightPostEventAccess()
+            let keyboardTest = WindowFocus.isTrusted && CGPreflightPostEventAccess()
                 && NSRunningApplication.runningApplications(withBundleIdentifier: "fr.groupesespaces.v2").count == 1
             if keyboardTest {
                 registerHotkey()
-                Self.postTestKey(kVK_Tab, flags: .maskSecondaryFn)
+                Self.postTestKey(kVK_Tab, flags: .maskAlternate)
                 for _ in 0..<12 {
                     if nativeSwitcher.isVisible { break }
                     try? await Task.sleep(for: .milliseconds(50))
                 }
                 guard nativeSwitcher.isVisible else {
-                    throw VerificationError(message: "Fn Tab n’a pas ouvert le sélecteur.")
+                    throw VerificationError(message: "⌥ Tab n’a pas ouvert le sélecteur.")
                 }
-                print("Fn Tab reçu · sélecteur ouvert")
+                print("⌥ Tab reçu · sélecteur ouvert")
                 nativeSwitcher.dismiss()
             }
             for index in [0, 1, 0] {
@@ -553,9 +598,11 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     }
 
     private func registerHotkey() {
-        guard hotkeyTap == nil else { return }
+        guard hotkeyTap == nil, WindowFocus.isTrusted else { return }
         let mask = (CGEventMask(1) << CGEventType.keyDown.rawValue)
                  | (CGEventMask(1) << CGEventType.keyUp.rawValue)
+                 | (CGEventMask(1) << CGEventType.scrollWheel.rawValue)
+                 | (CGEventMask(1) << CGEventType.mouseMoved.rawValue)
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
             eventsOfInterest: mask,
@@ -569,12 +616,31 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
                     return Unmanaged.passUnretained(event)
                 }
 
+                if type == .mouseMoved {
+                    let point = event.location
+                    MainActor.assumeIsolated { app.nativeSwitcher.handlePointerMove(quartzPoint: point) }
+                    return Unmanaged.passUnretained(event)
+                }
+
+                if type == .scrollWheel {
+                    guard let scroll = NSEvent(cgEvent: event) else { return Unmanaged.passUnretained(event) }
+                    let delta = CGPoint(x: scroll.scrollingDeltaX, y: scroll.scrollingDeltaY)
+                    let phase = scroll.phase
+                    let momentum = !scroll.momentumPhase.isEmpty
+                    let handled = MainActor.assumeIsolated {
+                        app.nativeSwitcher.handleScroll(delta: delta, phase: phase, momentum: momentum)
+                    }
+                    return handled ? nil : Unmanaged.passUnretained(event)
+                }
+
                 let flags = event.flags
-                guard flags.intersection([.maskCommand, .maskAlternate, .maskControl]).isEmpty else {
+                guard flags.intersection([.maskCommand, .maskControl]).isEmpty else {
                     return Unmanaged.passUnretained(event)
                 }
                 let key = Int(event.getIntegerValueField(.keyboardEventKeycode))
-                if key == kVK_Tab && flags.contains(.maskSecondaryFn) {
+                if key == kVK_Tab && flags.contains(.maskAlternate) {
+                    let configuring = MainActor.assumeIsolated { app.setupPanel?.isVisible == true }
+                    guard !configuring else { return Unmanaged.passUnretained(event) }
                     if type == .keyDown {
                         let backwards = flags.contains(.maskShift)
                         DispatchQueue.main.async { app.handleShortcut(backwards: backwards) }
@@ -592,15 +658,14 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ), let source = CFMachPortCreateRunLoopSource(nil, tap, 0) else {
-            store.message = "Autorise l’Accessibilité pour utiliser Fn Tab. Le sélecteur est aussi dans la barre des menus."
-            focusLog.notice("Fn+Tab indisponible")
+            store.message = "Le raccourci ⌥ Tab est indisponible. Ouvre le sélecteur depuis la barre des menus."
+            focusLog.notice("Option+Tab indisponible")
             return
         }
         hotkeyTap = tap
         hotkeySource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
-        presentation.shortcut = "Fn Tab"
-        focusLog.notice("Fn+Tab actif")
+        focusLog.notice("Option+Tab actif")
     }
 }

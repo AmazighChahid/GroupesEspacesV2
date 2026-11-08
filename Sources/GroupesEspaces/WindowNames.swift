@@ -57,8 +57,8 @@ enum WindowNames {
 @MainActor
 enum WindowCommand {
     static func run(_ args: [String]) throws {
-        let usage = "groupes-espaces fenetres | groupes-espaces renommer <id> <nom> | groupes-espaces actualiser-noms"
-        guard args == ["fenetres"] || args == ["actualiser-noms"]
+        let usage = "groupes-espaces fenetres | groupes-espaces renommer <id> <nom>"
+        guard args == ["fenetres"]
             || (args.count == 3 && args[0] == "renommer") else {
             throw CommandError(usage)
         }
@@ -78,24 +78,6 @@ enum WindowCommand {
         }
 
         let names = WindowNames.read(for: windows)
-        if args[0] == "actualiser-noms" {
-            let inputs = windows.compactMap { window -> ClaudeWindowNames.Input? in
-                guard names[window.key] == nil, let title = window.title else { return nil }
-                return .init(id: window.key, app: window.appName, title: title)
-            }
-            let suggestions = try ClaudeWindowNames.suggest(inputs)
-            let latest = system.readSpaces().flatMap { WindowInventory(system: system).read(in: $0) }?.all ?? []
-            let latestNames = WindowNames.read(for: latest)
-            var applied = 0
-            for suggestion in suggestions {
-                if let window = latest.first(where: { $0.key == suggestion.id }), latestNames[window.key] == nil {
-                    try WindowNames.write(suggestion.name, for: window)
-                    applied += 1
-                }
-            }
-            print("\(applied) fenêtre(s) renommée(s) sur \(inputs.count) titre(s) transmis à Claude Code.")
-            return
-        }
         let entries = windows.map { window in
             let location = spaces.filter { catalog.bySpace[$0.id]?.contains(window) == true }
             return Entry(

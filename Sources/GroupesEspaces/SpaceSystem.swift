@@ -138,17 +138,19 @@ final class SpaceSystem {
         return true
     }
 
-    func activateWithSpaceTransition(pid: pid_t, windowID: CGWindowID, in space: DesktopSpace,
-                                     usingAppSwitcherMode: Bool) async -> Bool {
-        guard !Task.isCancelled, let connection, let frontProcess, let processForPID else { return false }
+    func requestActivation(pid: pid_t, windowID: CGWindowID, usingAppSwitcherMode: Bool) -> Bool {
+        guard !Task.isCancelled, let frontProcess, let processForPID else { return false }
         var process = ProcessSerialNumber()
         guard processForPID(pid, &process) == 0 else { return false }
 
         // The Dock uses process activation for ⌘ Tab. A window ID is needed when an app spans multiple Spaces.
         let mode: ActivationMode = usingAppSwitcherMode ? .appSwitcher : .userGenerated
         let target = usingAppSwitcherMode ? kCGNullWindowID : windowID
-        guard frontProcess(&process, target, mode.rawValue) == 0 else { return false }
+        return frontProcess(&process, target, mode.rawValue) == 0
+    }
 
+    func waitForSpaceTransition(to space: DesktopSpace) async -> Bool {
+        guard let connection else { return false }
         let clock = ContinuousClock()
         let started = clock.now
         let display = space.displayID as CFString
