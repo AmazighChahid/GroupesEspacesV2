@@ -233,7 +233,7 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
         guard let renderer = GELayerRenderer.make(scale: screen.backingScaleFactor,
                                                    frame: CGRect(origin: .zero, size: canvas.size)) else {
             dismiss()
-            report("Le calque du Dock de cette version de macOS est incompatible avec la V2.")
+            report("Le calque du Dock de cette version de macOS est incompatible avec ProjectHop.")
             return false
         }
 

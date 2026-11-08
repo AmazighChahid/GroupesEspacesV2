@@ -150,11 +150,10 @@ struct GroupBar: View {
 
     private var identity: some View {
         HStack(spacing: 11) {
-            Image(systemName: "rectangle.3.group.fill")
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundStyle(.indigo)
+            Image(nsImage: ProjectHopIcon.image)
+                .resizable()
+                .scaledToFit()
                 .frame(width: 40, height: 40)
-                .background(.indigo.opacity(0.16), in: .rect(cornerRadius: 10))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("ProjectHop").font(.headline)

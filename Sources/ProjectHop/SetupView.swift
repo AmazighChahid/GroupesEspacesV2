@@ -1,6 +1,20 @@
 import AppKit
 import SwiftUI
 
+@MainActor
+enum ProjectHopIcon {
+    static let image = Bundle.main.url(forResource: "AppIcon", withExtension: "icns")
+        .flatMap(NSImage.init(contentsOf:)) ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+
+    static let menuBarImage: NSImage = {
+        let icon = image
+        return NSImage(size: NSSize(width: 20, height: 20), flipped: false) { rect in
+            icon.draw(in: rect)
+            return true
+        }
+    }()
+}
+
 struct SetupView: View {
     let finish: () -> Void
     let accessGranted: () -> Void
@@ -62,10 +76,7 @@ struct SetupView: View {
 private struct DraggableAppIcon: NSViewRepresentable {
     func makeNSView(context: Context) -> AppIconView {
         let view = AppIconView()
-        let icon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns")
-            .flatMap(NSImage.init(contentsOf:)) ?? NSApp.applicationIconImage.copy() as? NSImage
-        icon?.size = NSSize(width: 58, height: 58)
-        view.image = icon
+        view.image = ProjectHopIcon.image
         view.imageScaling = .scaleProportionallyUpOrDown
         return view
     }

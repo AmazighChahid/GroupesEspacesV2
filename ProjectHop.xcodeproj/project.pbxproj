@@ -26,13 +26,13 @@
 			path = Sources/DockRenderer;
 			sourceTree = "<group>";
 		};
-		DF337F8D1676A2034C50B828 /* Sources/GroupesEspaces */ = {
+		DF337F8D1676A2034C50B828 /* Sources/ProjectHop */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			explicitFileTypes = {
 			};
 			explicitFolders = (
 			);
-			path = Sources/GroupesEspaces;
+			path = Sources/ProjectHop;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -43,7 +43,7 @@
 			children = (
 				E7783854E532A2319854ABA6 /* Resources */,
 				1DD43FF3E6383E5C03E6B9AE /* Sources/DockRenderer */,
-				DF337F8D1676A2034C50B828 /* Sources/GroupesEspaces */,
+				DF337F8D1676A2034C50B828 /* Sources/ProjectHop */,
 				709620CDAD47AE38630D3A0D /* Products */,
 			);
 			sourceTree = "<group>";
@@ -81,7 +81,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				1DD43FF3E6383E5C03E6B9AE /* Sources/DockRenderer */,
-				DF337F8D1676A2034C50B828 /* Sources/GroupesEspaces */,
+				DF337F8D1676A2034C50B828 /* Sources/ProjectHop */,
 			);
 			name = ProjectHop;
 			packageProductDependencies = (

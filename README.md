@@ -14,17 +14,17 @@ Ouvre le sélecteur avec **⌥ Tab**, puis fais défiler verticalement pour pass
 
 ![Capture animée du sélecteur ProjectHop. Un défilement vers le bas passe de Montage à Publication. Un défilement vers le haut revient à Montage.](docs/projecthop-defilement.gif)
 
-[Voir la vidéo en 1080p](https://github.com/AmazighChahid/GroupesEspacesV2/releases/download/v2.0/ProjectHop-defilement.mp4)
+[Voir la vidéo en 1080p](https://github.com/AmazighChahid/ProjectHop/releases/download/v2.0/ProjectHop-defilement.mp4)
 
 ### Présentation générale
 
-![Démo animée du sélecteur. Le raccourci Option Tab rassemble les fenêtres d’un projet réparties sur plusieurs bureaux.](docs/groupes-espaces-v2-demo.gif)
+![Démo animée du sélecteur. Le raccourci Option Tab rassemble les fenêtres d’un projet réparties sur plusieurs bureaux.](docs/projecthop-demo.gif)
 
-[Voir la démo en 1080p avec le son](https://github.com/AmazighChahid/GroupesEspacesV2/releases/download/v2.0/GroupesEspacesV2-motion.mp4)
+[Voir la démo en 1080p avec le son](https://github.com/AmazighChahid/ProjectHop/releases/download/v2.0/GroupesEspacesV2-motion.mp4)
 
 ## Installer la version 2.0
 
-Il faut un Mac Apple Silicon sous macOS 27.2 ou version ultérieure. [Télécharger le DMG](https://github.com/AmazighChahid/GroupesEspacesV2/releases/download/v2.0/GroupesEspacesV2-2.0.dmg)
+Il faut un Mac Apple Silicon sous macOS 27.2 ou version ultérieure. [Télécharger le DMG](https://github.com/AmazighChahid/ProjectHop/releases/download/v2.0/GroupesEspacesV2-2.0.dmg)
 
 1. Ouvre le DMG et glisse **Groupes d’espaces V2**, le nom de ProjectHop dans la version 2.0, dans **Applications**.
 2. Lance l’app et autorise-la dans **Réglages Système → Confidentialité et sécurité → Accessibilité**.
