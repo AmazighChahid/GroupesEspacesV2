@@ -25,7 +25,7 @@ final class GroupStore: ObservableObject {
     private let windowGroupKey = "windowGroups.v1"
     private let windowOrderKey = "windowOrder.v1"
 
-    init(system: SpaceSystem, defaults: UserDefaults = .standard) {
+    init(system: SpaceSystem, defaults: UserDefaults = .standard, importSideDock: Bool = true) {
         self.system = system
         inventory = WindowInventory(system: system)
         self.defaults = defaults
@@ -42,6 +42,7 @@ final class GroupStore: ObservableObject {
         groups = saved ?? []
         windowGroups = defaults.dictionary(forKey: windowGroupKey) as? [String: String] ?? [:]
         windowOrder = defaults.dictionary(forKey: windowOrderKey) as? [String: [String]] ?? [:]
+        if importSideDock { mergeSideDockSnapshot() }
         refresh()
     }
 
@@ -90,8 +91,8 @@ final class GroupStore: ObservableObject {
         return claimed.count == 1 && candidates.count == 1 ? candidates.first : nil
     }
 
-    func addGroup() -> UUID {
-        let group = SpaceGroup(name: "Nouveau groupe")
+    func addGroup(named name: String = "Nouveau groupe") -> UUID {
+        let group = SpaceGroup(name: name)
         groups.append(group)
         save()
         return group.id
@@ -116,6 +117,10 @@ final class GroupStore: ObservableObject {
     }
 
     func projectWindows(in group: UUID?) -> [SpaceWindow] {
+        windowsByProject(for: [group])[0]
+    }
+
+    func windowsByProject(for projects: [UUID?]) -> [[SpaceWindow]] {
         let spaceGroups = Dictionary(
             groups.flatMap { project in
                 project.members.compactMap { member -> (DesktopSpace.ID, UUID)? in
@@ -133,22 +138,25 @@ final class GroupStore: ObservableObject {
             uniquingKeysWith: { first, _ in first }
         )
         let projectIDs = Set(groups.map(\.id))
-        let sorted = (windows?.all ?? []).filter { window in
+        let sections = Dictionary(grouping: windows?.all ?? []) { window -> UUID? in
             if let override = windowGroups[window.key] {
-                return UUID(uuidString: override).flatMap { projectIDs.contains($0) ? $0 : nil } == group
+                return UUID(uuidString: override).flatMap { projectIDs.contains($0) ? $0 : nil }
             }
-            return locations[window.id].flatMap { spaceGroups[$0.id] } == group
-        }.sorted { first, second in
-            let firstFullScreen = locations[first.id]?.kind == .fullScreen
-            let secondFullScreen = locations[second.id]?.kind == .fullScreen
-            if firstFullScreen != secondFullScreen { return firstFullScreen }
-            let order = first.appName.localizedStandardCompare(second.appName)
-            return order == .orderedSame ? first.id < second.id : order == .orderedAscending
+            return locations[window.id].flatMap { spaceGroups[$0.id] }
         }
-        guard let order = windowOrder[group?.uuidString ?? ""], !order.isEmpty else { return sorted }
-        let byKey = Dictionary(sorted.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
-        let orderedKeys = Set(order)
-        return order.compactMap { byKey[$0] } + sorted.filter { !orderedKeys.contains($0.key) }
+        return projects.map { group in
+            let sorted = (sections[group] ?? []).sorted { first, second in
+                let firstFullScreen = locations[first.id]?.kind == .fullScreen
+                let secondFullScreen = locations[second.id]?.kind == .fullScreen
+                if firstFullScreen != secondFullScreen { return firstFullScreen }
+                let order = first.appName.localizedStandardCompare(second.appName)
+                return order == .orderedSame ? first.id < second.id : order == .orderedAscending
+            }
+            guard let order = windowOrder[group?.uuidString ?? ""], !order.isEmpty else { return sorted }
+            let byKey = Dictionary(sorted.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+            let orderedKeys = Set(order)
+            return order.compactMap { byKey[$0] } + sorted.filter { !orderedKeys.contains($0.key) }
+        }
     }
 
     func location(for window: SpaceWindow) -> DesktopSpace? {
@@ -191,6 +199,39 @@ final class GroupStore: ObservableObject {
         windowOrder = updated
         defaults.set(updated, forKey: windowOrderKey)
         return true
+    }
+
+    private func mergeSideDockSnapshot() {
+        let migrationKey = "importedSideDockSnapshot.v1"
+        guard !defaults.bool(forKey: migrationKey),
+              let snapshot = defaults.persistentDomain(forName: "local.amazigh.SideDock"),
+              let data = snapshot[storageKey] as? Data,
+              let imported = try? JSONDecoder().decode([SpaceGroup].self, from: data) else { return }
+
+        // V2 owns existing groups, window assignments and ordering.
+        var ids = Set(groups.map(\.id))
+        let additions = imported.filter { ids.insert($0.id).inserted }
+        if !additions.isEmpty {
+            groups.append(contentsOf: additions)
+            save()
+        }
+
+        let assignments = snapshot[windowGroupKey] as? [String: String] ?? [:]
+        for (key, destination) in assignments where windowGroups[key] == nil {
+            if destination.isEmpty || UUID(uuidString: destination).map(ids.contains) == true {
+                windowGroups[key] = destination
+            }
+        }
+        saveWindowGroups()
+
+        let orders = snapshot[windowOrderKey] as? [String: [String]] ?? [:]
+        for (destination, order) in orders where windowOrder[destination] == nil {
+            if destination.isEmpty || UUID(uuidString: destination).map(ids.contains) == true {
+                windowOrder[destination] = order
+            }
+        }
+        defaults.set(windowOrder, forKey: windowOrderKey)
+        defaults.set(true, forKey: migrationKey)
     }
 
     private func saveWindowGroups() {

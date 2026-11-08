@@ -18,8 +18,11 @@ enum WindowNames {
         return names
     }
 
-    static func labels(for windows: [SpaceWindow], customNames: [String: String]) -> [String: String] {
-        var labels = Dictionary(uniqueKeysWithValues: windows.map { ($0.key, $0.label) })
+    static func labels(for windows: [SpaceWindow], customNames: [String: String],
+                       includeApplicationName: Bool = true) -> [String: String] {
+        var labels = Dictionary(uniqueKeysWithValues: windows.map {
+            ($0.key, includeApplicationName ? $0.label : ($0.title ?? $0.appName))
+        })
         let untitled = Dictionary(grouping: windows.filter { $0.title == nil }, by: \.appName)
         for peers in untitled.values where peers.count > 1 {
             for (index, window) in peers.sorted(by: { $0.id < $1.id }).enumerated() {

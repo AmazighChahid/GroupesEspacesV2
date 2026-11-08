@@ -304,14 +304,10 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
         if !panel.isVisible { panel.orderFrontRegardless() }
         if !panel.isKeyWindow { panel.makeKeyAndOrderFront(nil) }
         updateRemoveBadges(at: panel.mouseLocationOutsideOfEventStream)
-        if direction != 0 && !entries.isEmpty && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            let slide = CABasicAnimation(keyPath: "transform.translation.y")
-            slide.fromValue = CGFloat(-direction) * 22
-            slide.toValue = 0
-            slide.duration = 0.19
-            slide.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            renderer.layer.add(slide, forKey: "projectSlide")
-            for badge in removeBadges { badge.button.layer?.add(slide, forKey: "projectSlide") }
+        if direction != 0 && !entries.isEmpty && PanelMotion.isEnabled {
+            let offset = CGFloat(-direction) * 22
+            PanelMotion.slide(on: renderer.layer, axis: .y, from: offset)
+            for badge in removeBadges { PanelMotion.slide(on: badge.button.layer, axis: .y, from: offset) }
         }
         monitorEvents()
         return true

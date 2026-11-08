@@ -36,11 +36,12 @@ private final class GroupPanel: NSPanel {
 final class GroupBarApp: NSObject, NSApplicationDelegate {
     private let system = SpaceSystem()
     private let setupPreference = "firstLaunchSetup.v1"
+    private let sideDockPreference = "sideDockEnabled.v1"
     private let focusLog = Logger(subsystem: "fr.groupesespaces.v2", category: "WindowFocus")
     private let verification: URL?
     private let verificationDomain: String?
     private let preferences: UserDefaults
-    private lazy var store = GroupStore(system: system, defaults: preferences)
+    private lazy var store = GroupStore(system: system, defaults: preferences, importSideDock: verification == nil)
     private lazy var nativeSwitcher = NativeSwitcher(store: store, activate: { [weak self] window in
         self?.openWindow(window)
     }, report: { [weak self] message in
@@ -49,6 +50,16 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     }, organize: { [weak self] origin in
         self?.showProjectEditor(from: origin)
     })
+    private lazy var sideDock = SideDockController(
+        store: store,
+        activate: { [weak self] in self?.openWindow($0) },
+        authorize: { [weak self] in self?.authorizeWindows() },
+        canReveal: { [weak self] in
+            guard let self else { return false }
+            return !self.nativeSwitcher.isVisible && self.panel?.isVisible != true
+                && self.setupPanel?.isVisible != true && self.switchTask == nil
+        }
+    )
     private var panel: GroupPanel?
     private var statusItem: NSStatusItem?
     private var hotkeyTap: CFMachPort?
@@ -60,6 +71,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     private var outsideMonitor: Any?
     private var escapeMonitor: Any?
     private var switchTask: Task<Void, Never>?
+    private var selectionGeneration = 0
 
     init(verification: URL?) {
         self.verification = verification
@@ -94,6 +106,12 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         let select = NSMenuItem(title: "Ouvrir le sélecteur", action: #selector(showNativeSwitcher), keyEquivalent: "")
         select.target = self
         menu.addItem(select)
+        let dock = NSMenuItem(title: "Dock latéral", action: #selector(toggleSideDock(_:)), keyEquivalent: "")
+        dock.target = self
+        let dockEnabled = preferences.object(forKey: sideDockPreference) as? Bool ?? true
+        dock.state = dockEnabled ? .on : .off
+        menu.addItem(dock)
+        sideDock.setEnabled(dockEnabled)
         let accessibility = NSMenuItem(title: "Configurer l’Accessibilité…", action: #selector(authorizeWindows), keyEquivalent: "")
         accessibility.target = self
         menu.addItem(accessibility)
@@ -128,6 +146,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         hideBar()
         switchTask?.cancel()
+        if verification == nil { sideDock.setEnabled(false) }
         nativeSwitcher.dismiss()
         if let hotkeySource { CFRunLoopRemoveSource(CFRunLoopGetMain(), hotkeySource, .commonModes) }
         if let hotkeyTap { CFMachPortInvalidate(hotkeyTap) }
@@ -144,13 +163,22 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         }
     }
 
+    @objc private func toggleSideDock(_ sender: NSMenuItem) {
+        guard !sideDock.isBusy else { return }
+        let enabled = sender.state != .on
+        preferences.set(enabled, forKey: sideDockPreference)
+        sender.state = enabled ? .on : .off
+        sideDock.setEnabled(enabled)
+    }
+
     private func showProjectEditor(from origin: CGRect? = nil) {
         nativeSwitcher.dismiss()
         showBar(from: origin)
     }
 
     @objc private func showNativeSwitcher() {
-        guard setupPanel?.isVisible != true else { return }
+        guard setupPanel?.isVisible != true, !sideDock.isBusy else { return }
+        sideDock.dismiss()
         hideBar()
         nativeSwitcher.show()
     }
@@ -160,12 +188,14 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     }
 
     private func handleShortcut(backwards: Bool) {
-        guard setupPanel?.isVisible != true else { return }
+        guard setupPanel?.isVisible != true, !sideDock.isBusy else { return }
+        sideDock.dismiss()
         hideBar()
         nativeSwitcher.shortcut(backwards: backwards)
     }
 
     private func showSetup(openAccessibility: Bool = false) {
+        sideDock.dismiss()
         nativeSwitcher.dismiss()
         if let setupPanel {
             NSApp.activate()
@@ -211,10 +241,12 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     }
 
     @objc private func spaceDidChange() {
+        sideDock.dismiss()
         store.refresh(includeWindows: panel?.isVisible == true)
     }
 
     private func showBar(from origin: CGRect? = nil) {
+        if verification == nil { sideDock.dismiss() }
         store.refresh(includeWindows: true)
         if let panel, panel.isVisible {
             panel.makeKeyAndOrderFront(nil)
@@ -228,7 +260,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         let size = GroupBar.openingSize(for: store, available: available)
         let target = CGRect(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2,
                             width: size.width, height: size.height).integral
-        let source = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : origin
+        let source = PanelMotion.isEnabled ? origin : nil
         let windowFrame = source.map { target.union($0).integral } ?? target
         let panel = GroupPanel(contentRect: windowFrame, styleMask: [.borderless, .nonactivatingPanel],
                                backing: .buffered, defer: false)
@@ -286,15 +318,8 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
                     guard let self, let panel, let host, let backdrop else {
                         return true
                     }
-                    let progress = min(1, (CACurrentMediaTime() - started) / 0.27)
-                    let eased = 1 - pow(1 - progress, 3)
-                    let frame = CGRect(
-                        x: initialFrame.minX + (editorFrame.minX - initialFrame.minX) * eased,
-                        y: initialFrame.minY + (editorFrame.minY - initialFrame.minY) * eased,
-                        width: initialFrame.width + (editorFrame.width - initialFrame.width) * eased,
-                        height: initialFrame.height + (editorFrame.height - initialFrame.height) * eased
-                    )
-                    backdrop.frame = frame
+                    let progress = min(1, (CACurrentMediaTime() - started) / PanelMotion.morphDuration)
+                    backdrop.frame = PanelMotion.morphFrame(from: initialFrame, to: editorFrame, progress: progress)
                     host.alphaValue = max(0, (progress - 0.65) / 0.35)
                     if progress == 1 {
                         self.morphTimer = nil
@@ -458,9 +483,15 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
 
     private func beginSelection(_ action: @escaping @MainActor () async -> Void) {
         switchTask?.cancel()
+        if verification == nil { sideDock.dismiss() }
         hideBar()
         store.message = nil
-        switchTask = Task {
+        selectionGeneration += 1
+        let generation = selectionGeneration
+        switchTask = Task { [weak self] in
+            defer {
+                if self?.selectionGeneration == generation { self?.switchTask = nil }
+            }
             try? await Task.sleep(for: .milliseconds(80))
             guard !Task.isCancelled else { return }
             await action()
@@ -640,7 +671,9 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
                 }
                 let key = Int(event.getIntegerValueField(.keyboardEventKeycode))
                 if key == kVK_Tab && flags.contains(.maskAlternate) {
-                    let configuring = MainActor.assumeIsolated { app.setupPanel?.isVisible == true }
+                    let configuring = MainActor.assumeIsolated {
+                        app.setupPanel?.isVisible == true || app.sideDock.isBusy
+                    }
                     guard !configuring else { return Unmanaged.passUnretained(event) }
                     if type == .keyDown {
                         let backwards = flags.contains(.maskShift)
