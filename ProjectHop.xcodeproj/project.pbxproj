@@ -8,12 +8,17 @@
 
 /* Begin PBXBuildFile section */
 		914D37CC742BFBC6CA838F04 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 0F09C22151018348E2E7119C /* AppIcon.icns */; };
+		00DAEFA7482F49D9856955FE /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 0F09C22151018348E2E7119C /* AppIcon.icns */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		0F09C22151018348E2E7119C /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		735FAFEAE16F98353ED5A9C2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		FE58F9D1246830075BB7A06F /* ProjectHop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ProjectHop.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C92DA4E19DF442518F9AC8DE /* ProjectHop Sandbox.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ProjectHop Sandbox.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		44009BBDB82F487F9B11299F /* ProjectHop.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ProjectHop.xcconfig; sourceTree = "<group>"; };
+		1A1FC96C617544F8B5B6B207 /* ProjectHop-Sandbox.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "ProjectHop-Sandbox.xcconfig"; sourceTree = "<group>"; };
+		2B644F4F29A042D0ABA6F73D /* ProjectHop-Sandbox.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "ProjectHop-Sandbox.entitlements"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -52,6 +57,7 @@
 			isa = PBXGroup;
 			children = (
 				FE58F9D1246830075BB7A06F /* ProjectHop.app */,
+				C92DA4E19DF442518F9AC8DE /* ProjectHop Sandbox.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -61,6 +67,9 @@
 			children = (
 				0F09C22151018348E2E7119C /* AppIcon.icns */,
 				735FAFEAE16F98353ED5A9C2 /* Info.plist */,
+				1A1FC96C617544F8B5B6B207 /* ProjectHop-Sandbox.xcconfig */,
+				2B644F4F29A042D0ABA6F73D /* ProjectHop-Sandbox.entitlements */,
+				44009BBDB82F487F9B11299F /* ProjectHop.xcconfig */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -88,6 +97,28 @@
 			);
 			productName = ProjectHop;
 			productReference = FE58F9D1246830075BB7A06F /* ProjectHop.app */;
+			productType = "com.apple.product-type.application";
+		};
+		C39BEAEB01EE490F80C4D69A /* ProjectHop Sandbox */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 56D0F6C1AD1B4CE782E51979 /* Build configuration list for PBXNativeTarget "ProjectHop Sandbox" */;
+			buildPhases = (
+				7F21EB0E6AD944AC9B4739EF /* Sources */,
+				21DF96EC63E74CD88B1F7109 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				1DD43FF3E6383E5C03E6B9AE /* Sources/DockRenderer */,
+				DF337F8D1676A2034C50B828 /* Sources/ProjectHop */,
+			);
+			name = "ProjectHop Sandbox";
+			packageProductDependencies = (
+			);
+			productName = "ProjectHop Sandbox";
+			productReference = C92DA4E19DF442518F9AC8DE /* ProjectHop Sandbox.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -120,6 +151,7 @@
 			projectRoot = "";
 			targets = (
 				DA48C11DC0283A0BF147ABEB /* ProjectHop */,
+				C39BEAEB01EE490F80C4D69A /* ProjectHop Sandbox */,
 			);
 		};
 /* End PBXProject section */
@@ -133,10 +165,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		21DF96EC63E74CD88B1F7109 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				00DAEFA7482F49D9856955FE /* AppIcon.icns in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		D4DA320E7688D4657E4BD591 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7F21EB0E6AD944AC9B4739EF /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -148,23 +195,17 @@
 /* Begin XCBuildConfiguration section */
 		0AF666EA14CC8416226215AC /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 44009BBDB82F487F9B11299F /* ProjectHop.xcconfig */;
 			buildSettings = {
-				ARCHS = arm64;
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = 32P437V988;
 				ENABLE_APP_SANDBOX = NO;
-				ENABLE_HARDENED_RUNTIME = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = Resources/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = fr.groupesespaces.v2;
-				SDKROOT = macosx;
-				SWIFT_OBJC_BRIDGING_HEADER = Sources/DockRenderer/DockRenderer.h;
+			};
+			name = Debug;
+		};
+		C00E83DEF9F3442CA8861D05 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1A1FC96C617544F8B5B6B207 /* ProjectHop-Sandbox.xcconfig */;
+			buildSettings = {
 			};
 			name = Debug;
 		};
@@ -289,23 +330,17 @@
 		};
 		F60D5F4425804A144816D1B1 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 44009BBDB82F487F9B11299F /* ProjectHop.xcconfig */;
 			buildSettings = {
-				ARCHS = arm64;
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = 32P437V988;
 				ENABLE_APP_SANDBOX = NO;
-				ENABLE_HARDENED_RUNTIME = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = Resources/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = fr.groupesespaces.v2;
-				SDKROOT = macosx;
-				SWIFT_OBJC_BRIDGING_HEADER = Sources/DockRenderer/DockRenderer.h;
+			};
+			name = Release;
+		};
+		9F95955843CE4789A74393EB /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1A1FC96C617544F8B5B6B207 /* ProjectHop-Sandbox.xcconfig */;
+			buildSettings = {
 			};
 			name = Release;
 		};
@@ -317,6 +352,15 @@
 			buildConfigurations = (
 				0AF666EA14CC8416226215AC /* Debug */,
 				F60D5F4425804A144816D1B1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		56D0F6C1AD1B4CE782E51979 /* Build configuration list for PBXNativeTarget "ProjectHop Sandbox" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C00E83DEF9F3442CA8861D05 /* Debug */,
+				9F95955843CE4789A74393EB /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

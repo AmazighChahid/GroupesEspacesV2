@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Darwin
+import Security
 import Synchronization
 
 enum WindowFocus {
@@ -19,6 +20,10 @@ enum WindowFocus {
     private static let knownWindows = Mutex<[WindowKey: WindowHandle]>([:])
 
     static var isTrusted: Bool { AXIsProcessTrusted() }
+    static let isSandboxed: Bool = {
+        guard let task = SecTaskCreateFromSelf(nil) else { return false }
+        return SecTaskCopyValueForEntitlement(task, "com.apple.security.app-sandbox" as CFString, nil) as? Bool == true
+    }()
 
     enum Result: String, Sendable {
         case focused, notAuthorized, unavailable, missingWindow, raiseFailed, differentWindow, applicationNotActive
@@ -80,13 +85,7 @@ enum WindowFocus {
         let task = Task.detached(priority: .userInitiated) {
             guard isTrusted, let getID = getWindowID else { return AXError.apiDisabled }
             let key = WindowKey(pid: pid, id: id)
-            let cached = knownWindows.withLock { $0[key] }?.element
-            let application = AXUIElementCreateApplication(pid)
-            AXUIElementSetMessagingTimeout(application, 0.25)
-            let window = cached.flatMap { windowID($0, getID) == id ? $0 : nil }
-                ?? elements(of: application).first { windowID($0, getID) == id }
-                ?? findOffSpaceWindow(key, getID: getID)
-            guard !Task.isCancelled, let window else { return AXError.invalidUIElement }
+            guard let window = resolveWindow(key, getID: getID), !Task.isCancelled else { return AXError.invalidUIElement }
             AXUIElementSetMessagingTimeout(window, 0.25)
             let result = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
             if result == .success {
@@ -101,6 +100,29 @@ enum WindowFocus {
         } onCancel: {
             task.cancel()
         }
+    }
+
+    static func requestClose(pid: pid_t, id: CGWindowID) -> AXError {
+        guard isTrusted else { return .apiDisabled }
+        guard let getID = getWindowID else { return .notImplemented }
+        guard let window = resolveWindow(WindowKey(pid: pid, id: id), getID: getID) else { return .invalidUIElement }
+        AXUIElementSetMessagingTimeout(window, 0.25)
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(window, kAXCloseButtonAttribute as CFString, &value)
+        guard result == .success else { return result }
+        guard let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return .noValue }
+        let button = unsafeDowncast(value, to: AXUIElement.self)
+        AXUIElementSetMessagingTimeout(button, 0.5)
+        return AXUIElementPerformAction(button, kAXPressAction as CFString)
+    }
+
+    private static func resolveWindow(_ key: WindowKey, getID: GetID) -> AXUIElement? {
+        let cached = knownWindows.withLock { $0[key] }?.element
+        let application = AXUIElementCreateApplication(key.pid)
+        AXUIElementSetMessagingTimeout(application, 0.25)
+        return cached.flatMap { windowID($0, getID) == key.id ? $0 : nil }
+            ?? elements(of: application).first { windowID($0, getID) == key.id }
+            ?? findOffSpaceWindow(key, getID: getID)
     }
 
     private static func findOffSpaceWindow(_ key: WindowKey, getID: GetID) -> AXUIElement? {
@@ -168,6 +190,23 @@ enum WindowFocus {
         guard let id = windowID(window, getID) else { return nil }
         remember(window, for: WindowKey(pid: pid, id: id))
         return id
+    }
+
+    static func titles(pid: pid_t, ids: Set<CGWindowID>) -> [CGWindowID: String] {
+        guard isTrusted, let getID = getWindowID else { return [:] }
+        var titles: [CGWindowID: String] = [:]
+        for id in ids {
+            // AXWindows can omit windows on other Spaces.
+            let key = WindowKey(pid: pid, id: id)
+            guard let window = resolveWindow(key, getID: getID) else { continue }
+            AXUIElementSetMessagingTimeout(window, 0.25)
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &value) == .success,
+                  let title = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !title.isEmpty else { continue }
+            titles[id] = title
+        }
+        return titles
     }
 
     private static func elements(of application: AXUIElement) -> [AXUIElement] {

@@ -27,6 +27,7 @@ cat > "$fixture/Contents/Info.plist" <<'PLIST'
 PLIST
 xcrun swiftc -swift-version 6 -parse-as-library \
     Sources/ProjectHop/SpaceSystem.swift Sources/ProjectHop/CrossSpaceFixture.swift \
+    Sources/ProjectHop/DockSwipe.swift \
     Tests/Fixture.swift -o "$fixture/Contents/MacOS/Fixture"
 codesign --force --sign - "$fixture" 2>/dev/null
 open -g -n -a "$fixture" --stdout "$work/fixture.log" --stderr "$work/fixture.log" --args "$work/fixture.json"

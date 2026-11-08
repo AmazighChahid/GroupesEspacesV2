@@ -388,9 +388,22 @@ final class SideDockController: NSObject {
                 self?.moveWindow($0, to: filter) ?? false
             })
         }
-        return DockListRow(title: title, image: image, selected: windowFilter == filter, action: { [weak self] in
+        var row = DockListRow(title: title, image: image, selected: windowFilter == filter, action: { [weak self] in
             self?.selectFilter(filter)
         })
+        if case let .project(id) = filter {
+            row.deleteProject = { [weak self] in self?.deleteProject(id) }
+        }
+        return row
+    }
+
+    private func deleteProject(_ id: UUID) {
+        guard !isBusy, let screen = panel.screen, dockFrame != nil, let region = picker.hoverRegion else { return }
+        selectionRegion = region
+        picker.close(animated: PanelMotion.isEnabled)
+        store.deleteGroup(id)
+        if windowFilter == .project(id) { windowFilter = .all }
+        renderDock(on: screen)
     }
 
     private func selectFilter(_ filter: WindowFilter, direction: Int? = nil) {

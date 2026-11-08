@@ -8,6 +8,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic) NSInteger selection;
 @property(nonatomic, readonly) CGRect bezelFrame;
 - (BOOL)setBezelFrame:(CGRect)frame tileSize:(unsigned int)tileSize;
+- (BOOL)hideBezelMaterial;
 - (CGRect)iconFrameAtIndex:(NSInteger)index image:(CGImageRef)image NS_SWIFT_NAME(iconFrame(at:image:));
 - (void)addIcon:(CGImageRef)icon title:(NSString *)title NS_SWIFT_NAME(addIcon(_:title:));
 - (void)layout;

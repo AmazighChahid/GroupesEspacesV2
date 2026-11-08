@@ -8,6 +8,7 @@ struct DockListRow {
     var windowKey: String? = nil
     var dropWindow: ((String) -> Bool)? = nil
     var action: (() -> Void)? = nil
+    var deleteProject: (() -> Void)? = nil
 }
 
 @MainActor
@@ -33,9 +34,8 @@ final class DockListPage: NSView {
         scroll.scrollerStyle = .overlay
         let list = DocumentView(frame: NSRect(x: 0, y: 0, width: bodyWidth, height: bodyHeight))
         for (index, row) in rows.enumerated() {
-            let button = RowButton(row)
-            button.frame = NSRect(x: 0, y: CGFloat(index) * rowHeight, width: bodyWidth, height: rowHeight)
-            list.addSubview(button)
+            let frame = NSRect(x: 0, y: CGFloat(index) * rowHeight, width: bodyWidth, height: rowHeight)
+            list.addSubview(RowView(row, frame: frame))
         }
         scroll.documentView = list
         addSubview(scroll)
@@ -43,47 +43,78 @@ final class DockListPage: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    private final class RowButton: NSButton {
+    private final class ActionButton: NSButton {
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    }
+
+    private final class RowView: NSView {
+        private let button = ActionButton()
+        private let trash: ActionButton?
         private let invoke: (() -> Void)?
         private let selected: Bool
         private let dropWindow: ((String) -> Bool)?
-        private var hovered = false { didSet { needsDisplay = true } }
+        private let deleteProject: (() -> Void)?
+        private var hovered = false {
+            didSet {
+                needsDisplay = true
+                trash?.isHidden = !hovered
+            }
+        }
 
-        init(_ row: DockListRow) {
+        init(_ row: DockListRow, frame: NSRect) {
             invoke = row.action
             selected = row.selected
             dropWindow = row.dropWindow
-            super.init(frame: .zero)
-            title = row.title
-            font = .systemFont(ofSize: 13, weight: selected ? .semibold : .regular)
+            deleteProject = row.deleteProject
+            trash = row.deleteProject.map { _ in ActionButton() }
+            super.init(frame: frame)
+            button.frame = bounds
+            button.title = row.title
+            button.font = .systemFont(ofSize: 13, weight: selected ? .semibold : .regular)
             if let icon = row.image?.copy() as? NSImage {
                 icon.size = NSSize(width: 19, height: 19)
-                image = icon
+                button.image = icon
             }
-            imagePosition = .imageLeft
-            imageScaling = .scaleProportionallyDown
-            alignment = .left
-            cell?.usesSingleLineMode = true
-            cell?.lineBreakMode = .byTruncatingTail
-            isBordered = false
-            isEnabled = row.action != nil || row.dropWindow != nil
+            button.imagePosition = .imageLeft
+            button.imageScaling = .scaleProportionallyDown
+            button.alignment = .left
+            button.cell?.usesSingleLineMode = true
+            button.cell?.lineBreakMode = .byTruncatingTail
+            button.isBordered = false
+            button.isEnabled = row.action != nil || row.dropWindow != nil
+            button.toolTip = row.help ?? row.title
+            button.setAccessibilityLabel(row.help ?? row.title)
+            button.target = self
+            button.action = #selector(performRowAction)
+            addSubview(button)
+            if let trash {
+                let label = "Supprimer le projet \(row.title)"
+                trash.frame = NSRect(x: bounds.maxX - 29, y: bounds.midY - 13, width: 26, height: 26)
+                button.frame.size.width = trash.frame.minX
+                trash.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)?
+                    .withSymbolConfiguration(.init(pointSize: 13, weight: .medium))
+                trash.imagePosition = .imageOnly
+                trash.isBordered = false
+                trash.contentTintColor = .systemRed
+                trash.toolTip = label
+                trash.setAccessibilityLabel(label)
+                trash.target = self
+                trash.action = #selector(performDelete)
+                trash.isHidden = true
+                addSubview(trash)
+            }
             if dropWindow != nil { registerForDraggedTypes([.sideDockWindow]) }
-            toolTip = row.help ?? row.title
-            setAccessibilityLabel(row.help ?? row.title)
-            target = self
-            action = #selector(performRowAction)
             addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
                                            owner: self, userInfo: nil))
         }
 
         required init?(coder: NSCoder) { nil }
 
-        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
         override func mouseEntered(with event: NSEvent) { hovered = true }
         override func mouseExited(with event: NSEvent) { hovered = false }
 
         override func draw(_ dirtyRect: NSRect) {
-            if selected || (hovered && isEnabled) {
+            if selected || (hovered && button.isEnabled) {
                 NSColor.labelColor.withAlphaComponent(selected ? 0.15 : 0.09).setFill()
                 NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 2), xRadius: 9, yRadius: 9).fill()
             }
@@ -117,5 +148,6 @@ final class DockListPage: NSView {
         }
 
         @objc private func performRowAction() { invoke?() }
+        @objc private func performDelete() { deleteProject?() }
     }
 }

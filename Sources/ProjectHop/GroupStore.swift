@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import SwiftUI
 
 struct SpaceGroup: Codable, Identifiable {
@@ -10,17 +11,51 @@ struct SpaceGroup: Codable, Identifiable {
 
 @MainActor
 final class GroupStore: ObservableObject {
+    enum NamingStatus {
+        case requesting(windowCount: Int, startedAt: Date)
+        case finished(String, startedAt: Date? = nil)
+
+        var isActive: Bool {
+            switch self {
+            case .requesting: true
+            case .finished: false
+            }
+        }
+
+        var startedAt: Date? {
+            switch self {
+            case let .requesting(_, date): date
+            case let .finished(_, date): date
+            }
+        }
+
+        var text: String {
+            switch self {
+            case let .requesting(count, _): "Nommage local en cours (\(count) fenêtre\(count == 1 ? "" : "s"))…"
+            case let .finished(message, _): message
+            }
+        }
+    }
+
     @Published private(set) var groups: [SpaceGroup]
     @Published private(set) var spaces: [DesktopSpace] = []
     @Published private(set) var windows: WindowCatalog?
     @Published private(set) var windowNames: [String: String] = [:]
+    @Published private(set) var namingStatus: NamingStatus? {
+        didSet { message = namingStatus?.text }
+    }
     @Published private(set) var windowGroups: [String: String]
     @Published private var windowOrder: [String: [String]]
     @Published var message: String?
+    var isNaming: Bool { namingStatus?.isActive == true }
 
     private let system: SpaceSystem
     private let inventory: WindowInventory
     private let defaults: UserDefaults
+    private let namingLog = Logger(subsystem: "fr.groupesespaces.v2", category: "WindowNaming")
+    private var seenWindowIDs: Set<CGWindowID>?
+    private var pendingWindowIDs: Set<CGWindowID> = []
+    private var automaticNamingTask: Task<Void, Never>?
     private let storageKey = "spaceGroups.v1"
     private let windowGroupKey = "windowGroups.v1"
     private let windowOrderKey = "windowOrder.v1"
@@ -166,6 +201,80 @@ final class GroupStore: ObservableObject {
         return containing.first { $0.kind == .fullScreen }
             ?? containing.first(where: \.isActive)
             ?? containing.first
+    }
+
+    func startAutomaticNaming() {
+        // Include windows that the switcher currently filters out.
+        seenWindowIDs = WindowInventory.serverWindowIDs()
+        pendingWindowIDs.removeAll()
+    }
+
+    func stopAutomaticNaming() {
+        automaticNamingTask?.cancel()
+        automaticNamingTask = nil
+        seenWindowIDs = nil
+        pendingWindowIDs.removeAll()
+    }
+
+    func nameNewWindows() {
+        guard !isNaming, WindowFocus.isTrusted else { return }
+        guard let seenWindowIDs else {
+            startAutomaticNaming()
+            return
+        }
+        guard let spaces = system.readSpaces(), !spaces.isEmpty,
+              let catalog = inventory.read(in: spaces, excluding: seenWindowIDs) else { return }
+        let observed = catalog.all
+        // A window may appear before its application has set the title.
+        let newWindows = observed.filter { pendingWindowIDs.contains($0.id) }
+        pendingWindowIDs = Set(observed.map(\.id))
+        self.seenWindowIDs?.formUnion(newWindows.map(\.id))
+        let existingNames = WindowNames.read(for: newWindows)
+        let candidates = newWindows.filter { existingNames[$0.key] == nil }
+        guard !candidates.isEmpty else { return }
+        automaticNamingTask = name(candidates, previousNames: existingNames)
+    }
+
+    func refreshNames(for selected: SpaceWindow? = nil) {
+        guard !isNaming else { return }
+        refresh(includeWindows: true)
+        let previousNames = windowNames
+        let candidates = (windows?.all ?? []).filter { window in
+            selected.map { $0.key == window.key } ?? (previousNames[window.key] == nil)
+        }
+        guard !candidates.isEmpty else {
+            namingStatus = .finished(selected == nil && windows?.all.isEmpty == false
+                ? "Les fenêtres détectées ont déjà un nom personnalisé."
+                : "Aucune fenêtre ouverte à renommer.")
+            return
+        }
+        name(candidates, previousNames: previousNames)
+    }
+
+    @discardableResult
+    private func name(_ candidates: [SpaceWindow], previousNames: [String: String]) -> Task<Void, Never> {
+        let startedAt = Date()
+        namingStatus = .requesting(windowCount: candidates.count, startedAt: startedAt)
+        namingLog.notice("Nommage local pour \(candidates.count, privacy: .public) fenêtres")
+        return Task(priority: .utility) {
+            let suggestions = await LocalWindowNames.suggest(for: candidates)
+            guard !Task.isCancelled else {
+                namingStatus = .finished("Nommage automatique arrêté.", startedAt: startedAt)
+                return
+            }
+            do {
+                refresh(includeWindows: true)
+                let live = windows?.all ?? []
+                defer { windowNames = WindowNames.read(for: live) }
+                let result = try WindowNames.apply(suggestions, for: candidates.map(\.key), to: live,
+                                                   previousNames: previousNames)
+                namingStatus = .finished(result.message, startedAt: startedAt)
+                namingLog.notice("Noms appliqués : \(result.suggested, privacy: .public) par le modèle local, \(result.fallback, privacy: .public) avec le nom de l’app")
+            } catch {
+                namingStatus = .finished(error.localizedDescription, startedAt: startedAt)
+                namingLog.error("Renommage interrompu : \(error.localizedDescription, privacy: .private)")
+            }
+        }
     }
 
     @discardableResult

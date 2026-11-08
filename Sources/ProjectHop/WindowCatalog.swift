@@ -76,11 +76,17 @@ final class WindowInventory {
         self.system = system
     }
 
-    func read(in spaces: [DesktopSpace]) -> WindowCatalog? {
+    static func serverWindowIDs() -> Set<CGWindowID>? {
+        windowRows().map { Set($0.compactMap { $0[kCGWindowNumber as String] as? CGWindowID }) }
+    }
+
+    private static func windowRows() -> [[String: Any]]? {
+        CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+    }
+
+    func read(in spaces: [DesktopSpace], excluding knownIDs: Set<CGWindowID> = []) -> WindowCatalog? {
         guard let connection = system.connection, let copyMembership,
-              let rows = CGWindowListCopyWindowInfo(
-                [.optionAll, .excludeDesktopElements], kCGNullWindowID
-              ) as? [[String: Any]] else { return nil }
+              let rows = Self.windowRows() else { return nil }
 
         let fullScreenSpaces = Dictionary(
             spaces.flatMap { space in space.fullScreenWindowIDs.map { ($0, space) } },
@@ -93,10 +99,11 @@ final class WindowInventory {
         )
         let ownPID = ProcessInfo.processInfo.processIdentifier
         let candidates: [Candidate] = rows.compactMap { row in
-            guard let id = row[kCGWindowNumber as String] as? CGWindowID,
+            guard let id = row[kCGWindowNumber as String] as? CGWindowID, !knownIDs.contains(id),
                   let pid = row[kCGWindowOwnerPID as String] as? pid_t, pid != ownPID else { return nil }
             let app = apps[pid] ?? NSRunningApplication(processIdentifier: pid)
-            guard app?.bundleIdentifier != "fr.groupesespaces.v2" else { return nil }
+            guard app?.bundleIdentifier != "fr.groupesespaces.v2",
+                  app?.bundleIdentifier != "fr.groupesespaces.v2.sandbox" else { return nil }
             if fullScreenSpaces[id] == nil {
                 guard let app, app.activationPolicy != .prohibited,
                       row[kCGWindowLayer as String] as? Int == 0,

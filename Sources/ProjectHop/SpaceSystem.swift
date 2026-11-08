@@ -2,6 +2,7 @@ import AppKit
 import Carbon
 import Darwin
 import OSLog
+import QuartzCore
 
 struct DesktopSpace: Identifiable, Equatable {
     let windowServerID: UInt64
@@ -147,6 +148,68 @@ final class SpaceSystem {
         let mode: ActivationMode = usingAppSwitcherMode ? .appSwitcher : .userGenerated
         let target = usingAppSwitcherMode ? kCGNullWindowID : windowID
         return frontProcess(&process, target, mode.rawValue) == 0
+    }
+
+    func swipeTo(_ space: DesktopSpace) async -> Bool {
+        if isCurrent(space) { return true }
+        guard CGPreflightPostEventAccess() else {
+            transitionLog.notice("Dock swipe unavailable: event posting is not authorized")
+            return false
+        }
+
+        // The Dock routes swipes to the screen under the pointer.
+        var displayBounds: CGRect?
+        var cursorRestore: (original: CGPoint, parked: CGPoint)?
+        defer {
+            if let cursorRestore, CGEvent(source: nil)?.location == cursorRestore.parked {
+                CGWarpMouseCursorPosition(cursorRestore.original)
+            }
+        }
+        if NSScreen.screens.count > 1 {
+            let displays = NSScreen.screens.compactMap {
+                ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+            }
+            let display = space.displayID == "Main" ? CGMainDisplayID() : displays.first { id in
+                guard let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() else { return false }
+                return (CFUUIDCreateString(nil, uuid) as String).caseInsensitiveCompare(space.displayID) == .orderedSame
+            }
+            guard let display, let cursor = CGEvent(source: nil)?.location else { return false }
+            let bounds = CGDisplayBounds(display)
+            displayBounds = bounds
+            if !bounds.contains(cursor) {
+                let center = CGPoint(x: bounds.midX.rounded(.down), y: bounds.midY.rounded(.down))
+                guard CGWarpMouseCursorPosition(center) == .success else { return false }
+                cursorRestore = (cursor, center)
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        // As in Spacewalk, recalculate the remaining distance before retrying.
+        for _ in 0..<2 {
+            guard !Task.isCancelled else { return false }
+            if let displayBounds {
+                guard let cursor = CGEvent(source: nil)?.location, displayBounds.contains(cursor) else { return false }
+            }
+            guard let spaces = readSpaces()?.filter({ $0.displayID == space.displayID }),
+                  let from = spaces.firstIndex(where: \.isActive),
+                  let to = spaces.firstIndex(where: { $0.id == space.id }) else { return false }
+            let steps = abs(to - from)
+            if steps == 0 { return true }
+            transitionLog.notice("Dock swipe to Space \(space.windowServerID, privacy: .public), steps: \(steps, privacy: .public)")
+            let postedAt = CACurrentMediaTime()
+            guard DockSwipe.post(right: to > from, steps: steps) else { return false }
+            // DockSwipe commits immediately. The Dock's reported Space is the completion signal.
+            while !Task.isCancelled {
+                if isCurrent(space) {
+                    let elapsed = Int((CACurrentMediaTime() - postedAt) * 1000)
+                    transitionLog.notice("Space \(space.windowServerID, privacy: .public) reached by Dock swipe in \(elapsed, privacy: .public) ms")
+                    return true
+                }
+                guard CACurrentMediaTime() - postedAt < 0.6 else { break }
+                try? await Task.sleep(for: .milliseconds(3))
+            }
+        }
+        return false
     }
 
     func waitForSpaceTransition(to space: DesktopSpace) async -> Bool {

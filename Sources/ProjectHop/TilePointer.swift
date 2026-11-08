@@ -2,24 +2,13 @@ import SwiftUI
 
 struct TilePointer: NSViewRepresentable {
     let click: () -> Void
-    let hover: ((Bool) -> Void)?
     let move: (CGPoint, CGSize) -> Void
     let drop: (CGPoint?) -> Void
 
-    func makeNSView(context: Context) -> TilePointerView {
-        let view = TilePointerView()
-        if hover != nil {
-            view.addTrackingArea(NSTrackingArea(
-                rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-                owner: view, userInfo: nil
-            ))
-        }
-        return view
-    }
+    func makeNSView(context: Context) -> TilePointerView { TilePointerView() }
 
     func updateNSView(_ view: TilePointerView, context: Context) {
         view.click = click
-        view.hover = hover
         view.move = move
         view.drop = drop
     }
@@ -27,7 +16,6 @@ struct TilePointer: NSViewRepresentable {
 
 final class TilePointerView: NSView {
     var click: (() -> Void)?
-    var hover: ((Bool) -> Void)?
     var move: ((CGPoint, CGSize) -> Void)?
     var drop: ((CGPoint?) -> Void)?
 
@@ -36,9 +24,6 @@ final class TilePointerView: NSView {
     private var dragging = false
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    override func mouseEntered(with event: NSEvent) { hover?(true) }
-    override func mouseExited(with event: NSEvent) { hover?(false) }
 
     override func mouseDown(with event: NSEvent) {
         start = event.locationInWindow
@@ -76,5 +61,30 @@ final class TilePointerView: NSView {
         let x = point.x - content.bounds.minX
         let y = content.isFlipped ? point.y - content.bounds.minY : content.bounds.maxY - point.y
         return CGPoint(x: x, y: y)
+    }
+}
+
+struct RowHover: NSViewRepresentable {
+    let changed: (Bool) -> Void
+
+    func makeNSView(context: Context) -> TrackingView {
+        let view = TrackingView()
+        view.addTrackingArea(NSTrackingArea(
+            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: view, userInfo: nil
+        ))
+        return view
+    }
+
+    func updateNSView(_ view: TrackingView, context: Context) {
+        view.changed = changed
+    }
+
+    final class TrackingView: NSView {
+        var changed: ((Bool) -> Void)?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func mouseEntered(with event: NSEvent) { changed?(true) }
+        override func mouseExited(with event: NSEvent) { changed?(false) }
     }
 }

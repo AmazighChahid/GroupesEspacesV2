@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import Combine
 import OSLog
 import QuartzCore
 import SwiftUI
@@ -12,13 +13,16 @@ struct ProjectHop {
         let verification = arguments.count == 2 && arguments[0] == "--verify-spaces"
             ? URL(fileURLWithPath: arguments[1]) : nil
         if verification == nil && arguments != ["--show-switcher"] && !arguments.isEmpty && !(arguments.count == 1 && arguments[0].hasPrefix("-psn_")) {
-            do {
-                try WindowCommand.run(arguments)
-                return
-            } catch {
-                FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8))
-                exit(EXIT_FAILURE)
+            Task {
+                do {
+                    try await WindowCommand.run(arguments)
+                    exit(EXIT_SUCCESS)
+                } catch {
+                    FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8))
+                    exit(EXIT_FAILURE)
+                }
             }
+            dispatchMain()
         }
         let app = NSApplication.shared
         let delegate = GroupBarApp(verification: verification)
@@ -37,12 +41,13 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     private let system = SpaceSystem()
     private let setupPreference = "firstLaunchSetup.v1"
     private let sideDockPreference = "sideDockEnabled.v1"
+    private let automaticNamingPreference = "localAutomaticWindowNaming.v1"
     private let focusLog = Logger(subsystem: "fr.groupesespaces.v2", category: "WindowFocus")
     private let verification: URL?
     private let verificationDomain: String?
     private let preferences: UserDefaults
     private lazy var store = GroupStore(system: system, defaults: preferences, importSideDock: verification == nil)
-    private lazy var nativeSwitcher = NativeSwitcher(store: store, activate: { [weak self] window in
+    private lazy var nativeSwitcher = NativeSwitcher(store: store, preferences: preferences, activate: { [weak self] window in
         self?.openWindow(window)
     }, report: { [weak self] message in
         self?.store.message = message
@@ -62,6 +67,8 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     )
     private var panel: GroupPanel?
     private var statusItem: NSStatusItem?
+    private var namingObservation: AnyCancellable?
+    private var automaticNamingTimer: Timer?
     private var hotkeyTap: CFMachPort?
     private var hotkeySource: CFRunLoopSource?
     private var setupPanel: GroupPanel?
@@ -71,6 +78,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     private var outsideMonitor: Any?
     private var escapeMonitor: Any?
     private var switchTask: Task<Void, Never>?
+    private var closingWindows: Set<String> = []
     private var selectionGeneration = 0
 
     init(verification: URL?) {
@@ -92,19 +100,21 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
             Task { await verifyCrossSpaceFixture(at: verification) }
             return
         }
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let button = item.button {
-            button.image = ProjectHopIcon.menuBarImage
-            button.setAccessibilityLabel("ProjectHop")
-            button.toolTip = "ProjectHop"
+        if preferences.object(forKey: automaticNamingPreference) == nil {
+            preferences.set(preferences.bool(forKey: "claudeNamingAtLaunch.v1"), forKey: automaticNamingPreference)
+            preferences.removeObject(forKey: "claudeNamingAtLaunch.v1")
         }
+        let automaticNaming = preferences.bool(forKey: automaticNamingPreference)
+        if automaticNaming { startAutomaticNaming() }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem = item
         registerHotkey()
         let menu = NSMenu()
         let organize = NSMenuItem(title: "Organiser les projets", action: #selector(toggleBar), keyEquivalent: "")
         organize.target = self
         menu.addItem(organize)
-        let select = NSMenuItem(title: "Ouvrir le sélecteur", action: #selector(showNativeSwitcher), keyEquivalent: "")
+        let select = NSMenuItem(title: "Ouvrir le sélecteur", action: #selector(showNativeSwitcher), keyEquivalent: "\t")
+        select.keyEquivalentModifierMask = .option
         select.target = self
         menu.addItem(select)
         let dock = NSMenuItem(title: "Dock latéral", action: #selector(toggleSideDock(_:)), keyEquivalent: "")
@@ -117,6 +127,26 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         accessibility.target = self
         menu.addItem(accessibility)
         menu.addItem(.separator())
+        let autoName = NSMenuItem(title: "Nommer les nouvelles fenêtres", action: #selector(toggleAutomaticNaming(_:)),
+                                  keyEquivalent: "")
+        autoName.target = self
+        autoName.state = automaticNaming ? .on : .off
+        autoName.toolTip = "Utilise le modèle local d’Apple pour nommer les fenêtres qui s’ouvrent ensuite."
+        menu.addItem(autoName)
+        let namingStatus = NSMenuItem(title: "Nommage local · Aucune demande", action: nil, keyEquivalent: "")
+        menu.addItem(namingStatus)
+        namingObservation = store.$namingStatus.sink { [weak button = item.button, weak namingStatus] status in
+            let active = status?.isActive == true
+            let time = status?.startedAt.map { "\($0.formatted(date: .omitted, time: .standard)) · " } ?? ""
+            let text = status.map { time + $0.text } ?? "Nommage local · Aucune demande"
+            namingStatus?.title = text
+            button?.toolTip = "ProjectHop · \(text)"
+            button?.image = active
+                ? NSImage(systemSymbolName: "sparkles", accessibilityDescription: text)
+                : ProjectHopIcon.menuBarImage
+            button?.setAccessibilityLabel(active ? text : "ProjectHop")
+        }
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Quitter ProjectHop", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
 
@@ -124,7 +154,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
             self, selector: #selector(spaceDidChange),
             name: NSWorkspace.activeSpaceDidChangeNotification, object: nil
         )
-        if !UserDefaults.standard.bool(forKey: setupPreference) || !WindowFocus.isTrusted {
+        if !preferences.bool(forKey: setupPreference) || !WindowFocus.isTrusted {
             showSetup(openAccessibility: !WindowFocus.isTrusted)
         } else if ProcessInfo.processInfo.arguments.contains("--show-switcher") {
             showNativeSwitcher()
@@ -147,6 +177,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         hideBar()
         switchTask?.cancel()
+        stopAutomaticNaming()
         if verification == nil { sideDock.setEnabled(false) }
         nativeSwitcher.dismiss()
         if let hotkeySource { CFRunLoopRemoveSource(CFRunLoopGetMain(), hotkeySource, .commonModes) }
@@ -170,6 +201,30 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         preferences.set(enabled, forKey: sideDockPreference)
         sender.state = enabled ? .on : .off
         sideDock.setEnabled(enabled)
+    }
+
+    @objc private func toggleAutomaticNaming(_ sender: NSMenuItem) {
+        let enabled = sender.state != .on
+        preferences.set(enabled, forKey: automaticNamingPreference)
+        sender.state = enabled ? .on : .off
+        if enabled { startAutomaticNaming() }
+        else { stopAutomaticNaming() }
+    }
+
+    private func startAutomaticNaming() {
+        store.startAutomaticNaming()
+        let timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.store.nameNewWindows() }
+        }
+        timer.tolerance = 0.4
+        automaticNamingTimer = timer
+    }
+
+    private func stopAutomaticNaming() {
+        guard let automaticNamingTimer else { return }
+        automaticNamingTimer.invalidate()
+        self.automaticNamingTimer = nil
+        store.stopAutomaticNaming()
     }
 
     private func showProjectEditor(from origin: CGRect? = nil) {
@@ -234,11 +289,16 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
     }
 
     private func finishSetup() {
-        UserDefaults.standard.set(true, forKey: setupPreference)
+        let firstSetup = !preferences.bool(forKey: setupPreference)
+        preferences.set(true, forKey: setupPreference)
         setupPanel?.close()
         setupPanel = nil
         registerHotkey()
-        showNativeSwitcher()
+        if firstSetup {
+            showProjectEditor()
+        } else {
+            showNativeSwitcher()
+        }
     }
 
     @objc private func spaceDidChange() {
@@ -288,6 +348,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         let host = NSHostingView(rootView: GroupBar(
             store: store,
             openWindow: { [weak self] in self?.openWindow($0) },
+            closeWindow: { [weak self] in self?.closeWindow($0) },
             close: { [weak self] in self?.hideBar() },
             openSetup: { [weak self] in self?.authorizeWindows() },
             resize: { [weak self, weak panel] height in
@@ -401,7 +462,31 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         escapeMonitor = nil
     }
 
+    private func closeWindow(_ selected: SpaceWindow) {
+        guard !closingWindows.contains(selected.key) else { return }
+        store.refresh(includeWindows: true)
+        guard let window = store.windows?.all.first(where: { $0.key == selected.key }) else { return }
+        closingWindows.insert(window.key)
+        store.message = nil
+        Task { [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                WindowFocus.requestClose(pid: window.ownerPID, id: window.id)
+            }.value
+            guard let self else { return }
+            self.closingWindows.remove(window.key)
+            self.store.refresh(includeWindows: true)
+            guard result != .success, self.store.windows?.all.contains(where: { $0.key == window.key }) == true else { return }
+            self.store.message = switch result {
+            case .apiDisabled: "Autorise ProjectHop dans Accessibilité pour fermer cette fenêtre."
+            case .attributeUnsupported, .noValue, .actionUnsupported: "Cette fenêtre ne propose pas de bouton de fermeture accessible."
+            case .cannotComplete: "L’app n’a pas confirmé la fermeture. Vérifie si elle demande d’enregistrer."
+            default: "ProjectHop n’a pas pu fermer cette fenêtre."
+            }
+        }
+    }
+
     private func openWindow(_ selected: SpaceWindow) {
+        let selectedAt = CACurrentMediaTime()
         store.refresh(includeWindows: true)
         guard let window = store.windows?.all.first(where: { $0.key == selected.key }) else {
             store.message = "Cette fenêtre a été fermée."
@@ -411,14 +496,17 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         let singleWindowApplication = store.windows?.all.contains {
             $0.ownerPID == window.ownerPID && $0.id != window.id
         } == false
-        beginSelection {
+        let sandboxed = WindowFocus.isSandboxed
+        let useDockSwipe = !singleWindowApplication && !window.isMinimized
+        beginSelection(delay: sandboxed && useDockSwipe ? .zero : .milliseconds(80)) {
             guard let application = NSRunningApplication(processIdentifier: window.ownerPID) else { return }
             if application.isHidden { application.unhide() }
+            var usedDockSwipe = false
             if let space, !self.system.isCurrent(space) {
                 let changesApplication = NSWorkspace.shared.frontmostApplication?.processIdentifier != window.ownerPID
                 let usingAppSwitcherMode = singleWindowApplication && changesApplication
                 var reachedSpace = false
-                if WindowFocus.isTrusted, !window.isMinimized {
+                if WindowFocus.isTrusted, !window.isMinimized, !sandboxed || usingAppSwitcherMode {
                     var requested = changesApplication && self.system.requestActivation(
                         pid: window.ownerPID, windowID: window.id, usingAppSwitcherMode: usingAppSwitcherMode
                     )
@@ -433,13 +521,32 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
                     }
                 }
                 guard !Task.isCancelled else { return }
+                if !reachedSpace, useDockSwipe {
+                    let elapsed = Int((CACurrentMediaTime() - selectedAt) * 1000)
+                    self.focusLog.notice("Dock swipe requested for window \(window.id, privacy: .public) at \(elapsed, privacy: .public) ms since selection")
+                    reachedSpace = await self.system.swipeTo(space)
+                    usedDockSwipe = reachedSpace
+                }
+                guard !Task.isCancelled else { return }
                 guard reachedSpace else {
-                    self.focusLog.notice("Space \(space.windowServerID, privacy: .public) not reached for window \(window.id, privacy: .public) (direct switch disabled)")
+                    self.focusLog.notice("Space \(space.windowServerID, privacy: .public) not reached for window \(window.id, privacy: .public)")
                     return
                 }
             }
             guard !Task.isCancelled else { return }
             guard space.map(self.system.isCurrent) != false else { return }
+            if sandboxed {
+                let result = await self.confirmWindowInSandbox(window, in: space, application: application)
+                guard !Task.isCancelled else { return }
+                let elapsed = Int((CACurrentMediaTime() - selectedAt) * 1000)
+                self.focusLog.notice("window \(window.id, privacy: .public) \(result.rawValue, privacy: .public) in \(elapsed, privacy: .public) ms since selection (WindowServer)")
+                if result == .focused {
+                    self.store.refresh()
+                } else {
+                    self.store.message = result.description
+                }
+                return
+            }
             if !self.isForeground(application) {
                 NSApp.yieldActivation(to: application)
                 _ = application.activate(from: .current)
@@ -458,6 +565,10 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
                         ? .focused : .notAuthorized
                 }
                 guard !Task.isCancelled, space.map(self.system.isCurrent) != false else { return }
+                if usedDockSwipe, result == .missingWindow,
+                   WindowFocus.frontVisibleWindowID(pid: window.ownerPID) == window.id {
+                    result = .focused
+                }
                 let rightApplication = self.isForeground(application)
                 if result == .focused && rightApplication
                     && WindowFocus.isWindowVisible(pid: window.ownerPID, id: window.id) {
@@ -475,6 +586,35 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func confirmWindowInSandbox(_ window: SpaceWindow, in space: DesktopSpace?,
+                                        application: NSRunningApplication) async -> WindowFocus.Result {
+        var result = WindowFocus.Result.applicationNotActive
+        for attempt in 0..<13 {
+            let activeSpace = space.flatMap { target in
+                system.readSpaces()?.first { $0.id == target.id && $0.isActive }
+            }
+            guard !Task.isCancelled, space == nil || activeSpace != nil else { return .differentWindow }
+            if isForeground(application) {
+                // A dedicated full-screen Space identifies its owner even when CGWindowList omits it.
+                if activeSpace?.fullScreenWindowIDs == [window.id]
+                    || WindowFocus.frontVisibleWindowID(pid: window.ownerPID) == window.id {
+                    return .focused
+                }
+                result = .missingWindow
+            } else {
+                result = .applicationNotActive
+                if attempt == 2 {
+                    NSApp.yieldActivation(to: application)
+                    if !system.requestActivation(pid: window.ownerPID, windowID: window.id, usingAppSwitcherMode: false) {
+                        _ = application.activate(from: .current)
+                    }
+                }
+            }
+            try? await Task.sleep(for: .milliseconds(16))
+        }
+        return result
+    }
+
     private func isForeground(_ application: NSRunningApplication) -> Bool {
         let workspace = NSWorkspace.shared
         let pid = application.processIdentifier
@@ -482,7 +622,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
             && (application.activationPolicy != .regular || workspace.menuBarOwningApplication?.processIdentifier == pid)
     }
 
-    private func beginSelection(_ action: @escaping @MainActor () async -> Void) {
+    private func beginSelection(delay: Duration, _ action: @escaping @MainActor () async -> Void) {
         switchTask?.cancel()
         if verification == nil { sideDock.dismiss() }
         hideBar()
@@ -493,7 +633,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
             defer {
                 if self?.selectionGeneration == generation { self?.switchTask = nil }
             }
-            try? await Task.sleep(for: .milliseconds(80))
+            if delay > .zero { try? await Task.sleep(for: delay) }
             guard !Task.isCancelled else { return }
             await action()
         }
@@ -549,7 +689,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
             }
 
             let keyboardTest = WindowFocus.isTrusted && CGPreflightPostEventAccess()
-                && NSRunningApplication.runningApplications(withBundleIdentifier: "fr.groupesespaces.v2").count == 1
+                && NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "").count == 1
             if keyboardTest {
                 registerHotkey()
                 Self.postTestKey(kVK_Tab, flags: .maskAlternate)

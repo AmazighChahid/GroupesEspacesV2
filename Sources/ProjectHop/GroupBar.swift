@@ -7,9 +7,15 @@ struct GroupBar: View {
     private static let sectionHeaderHeight: CGFloat = 40
     private static let columnPadding: CGFloat = 14
     private static let emptyHeight: CGFloat = 48
+    private static let rowIconSize: CGFloat = 30
+    private static let rowInset: CGFloat = 7
+    private static let rowSpacing: CGFloat = 10
+    private static let closeButtonSize: CGFloat = 28
+    private static let closeButtonInset: CGFloat = 4
 
     @ObservedObject var store: GroupStore
     let openWindow: (SpaceWindow) -> Void
+    let closeWindow: (SpaceWindow) -> Void
     let close: () -> Void
     let openSetup: () -> Void
     let resize: (CGFloat) -> Void
@@ -48,23 +54,38 @@ struct GroupBar: View {
     }
 
     static func openingSize(for store: GroupStore, available: CGSize) -> CGSize {
-        let windows = store.windows?.all ?? []
-        let names = WindowNames.labels(for: windows, customNames: store.windowNames)
+        let projects = store.groups
+        let sections = store.windowsByProject(for: projects.map { Optional($0.id) } + [nil])
+        let projectSections = sections.dropLast()
+        let inbox = sections.last ?? []
         let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        let longest = names.values.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
-        let width = min(available.width, min(740, max(620, (longest + 86) * 2)))
+        func textWidth(_ text: String) -> CGFloat {
+            (text as NSString).size(withAttributes: [.font: font]).width
+        }
+        func sectionWidth(_ windows: [SpaceWindow], groupName: String? = nil) -> CGFloat {
+            let labels = WindowNames.labels(for: windows, customNames: store.windowNames)
+            let rowControls = rowIconSize + 2 * rowInset + 2 * rowSpacing + 4 + closeButtonSize + closeButtonInset
+            let rowWidth = (labels.values.map(textWidth).max() ?? 0) + rowControls
+            let headingControls: CGFloat = groupName == nil ? 37 : 62
+            let headingWidth = textWidth(groupName ?? "Sans projet") + textWidth(windowCount(windows.count)) + headingControls
+            return min(340, ceil(max(rowWidth, headingWidth) + 2 * columnPadding + 4))
+        }
+        let widestProject = zip(projects, projectSections).map {
+            sectionWidth($0.1, groupName: $0.0.name)
+        }.max() ?? 0
+        let columnWidth = max(220, widestProject, sectionWidth(inbox))
+        let width = min(available.width, 2 * columnWidth + 1)
 
         func sectionHeight(_ count: Int) -> CGFloat {
             sectionHeaderHeight + (count == 0 ? emptyHeight : CGFloat(count) * (rowHeight + 1))
         }
-        let projects = store.groups
-        let projectsHeight = projects.reduce(CGFloat.zero) { height, group in
-            height + sectionHeight(store.projectWindows(in: group.id).count)
+        let projectsHeight = projectSections.reduce(CGFloat.zero) { height, windows in
+            height + sectionHeight(windows.count)
         } + CGFloat(max(0, projects.count - 1)) * 25
-        let inboxHeight = sectionHeight(store.projectWindows(in: nil).count)
+        let inboxHeight = sectionHeight(inbox.count)
         let toolbarHeight: CGFloat = width < 600 ? 110 : 69
         let height = toolbarHeight + columnPadding * 2 + max(projectsHeight, inboxHeight)
-            + (store.message == nil ? 0 : 32)
+            + (store.message == nil ? 30 : 50)
         return CGSize(width: width, height: min(available.height, maximumHeight, height))
     }
 
@@ -79,11 +100,11 @@ struct GroupBar: View {
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { toolbarHeight = $0 }
             Divider().frame(height: 1)
             GeometryReader { geometry in
+                let columnWidth = max(0, (geometry.size.width - 1) / 2)
                 HStack(spacing: 0) {
-                    projects
-                        .frame(width: geometry.size.width * 0.5)
-                    Divider()
-                    unassigned
+                    projects.frame(width: columnWidth)
+                    Divider().frame(width: 1)
+                    unassigned.frame(width: columnWidth)
                 }
             }
             footer
@@ -115,15 +136,18 @@ struct GroupBar: View {
 
     private var footer: some View {
         VStack(spacing: 0) {
-            if let message = store.message {
-                Divider()
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 8)
+            Divider()
+            VStack(spacing: 4) {
+                if let message = store.message {
+                    Text(message).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                Label("Fermer la fenêtre de l’app", systemImage: "xmark")
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 8)
         }
     }
 
@@ -157,7 +181,7 @@ struct GroupBar: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("ProjectHop").font(.headline)
-                Text("\(windowCount(store.windows?.count ?? 0))  ·  \(store.spaces.count) espaces macOS")
+                Text("\(Self.windowCount(store.windows?.count ?? 0))  ·  \(store.spaces.count) espaces macOS")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -193,6 +217,14 @@ struct GroupBar: View {
             }
             .buttonStyle(.bordered)
             .help("Créer un groupe")
+
+            Button("Nommer les fenêtres avec Apple Intelligence", systemImage: "sparkles") {
+                store.refreshNames()
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.bordered)
+            .disabled(store.isNaming)
+            .help("Nomme les fenêtres sans nom personnalisé avec le modèle local d’Apple")
 
             Menu {
                 Button("Configurer l’Accessibilité…", systemImage: "accessibility", action: openSetup)
@@ -271,7 +303,7 @@ struct GroupBar: View {
                 } else {
                     Text("Sans projet").font(.headline)
                 }
-                Text(windowCount(visible.count))
+                Text(Self.windowCount(visible.count))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize()
@@ -389,29 +421,23 @@ struct GroupBar: View {
         let key = window.key
         let target = groupID?.uuidString ?? inbox
         let highlighted = hoveredRow == key && drag == nil
-        let iconSize: CGFloat = 30
-        let rowInset: CGFloat = 7
-
-        return Button { openWindow(window) } label: {
-            HStack(spacing: 10) {
+        let tile = Button { openWindow(window) } label: {
+            HStack(spacing: Self.rowSpacing) {
                 icon.resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: iconSize, height: iconSize)
+                    .frame(width: Self.rowIconSize, height: Self.rowIconSize)
                     .accessibilityHidden(true)
                 Text(label).font(.callout.weight(.semibold)).lineLimit(1)
                 Spacer(minLength: 4)
             }
-            .padding(.horizontal, rowInset)
+            .padding(.horizontal, Self.rowInset)
             .frame(height: Self.rowHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(label)
         .overlay {
-            TilePointer(click: { openWindow(window) }, hover: { inside in
-                if inside { hoveredRow = key }
-                else if hoveredRow == key { hoveredRow = nil }
-            }) { point, offset in
+            TilePointer(click: { openWindow(window) }) { point, offset in
                 let position = CGPoint(x: point.x - offset.width, y: point.y - offset.height)
                 drag = DraggedEntry(key: key, label: label, icon: icon, position: position)
                 drop = destination(at: point, excluding: key)
@@ -422,17 +448,9 @@ struct GroupBar: View {
             }
             .accessibilityHidden(true)
         }
-        .background(highlighted ? Color.accentColor.opacity(0.12) : .clear, in: .rect(cornerRadius: 9))
-        .overlay {
-            if highlighted {
-                RoundedRectangle(cornerRadius: 9)
-                    .strokeBorder(Color.accentColor.opacity(0.68))
-                    .allowsHitTesting(false)
-            }
-        }
         .overlay(alignment: .leading) {
             if highlighted, groupID != nil {
-                Color.clear.frame(width: iconSize, height: iconSize)
+                Color.clear.frame(width: Self.rowIconSize, height: Self.rowIconSize)
                     .overlay(alignment: .topTrailing) {
                         Button { store.assignWindow(key, to: nil) } label: {
                             Image(systemName: "minus")
@@ -446,10 +464,45 @@ struct GroupBar: View {
                         .help("Retirer du projet")
                         .accessibilityLabel("Retirer \(label) du projet")
                     }
-                    .padding(.leading, rowInset)
+                    .padding(.leading, Self.rowInset)
+            }
+        }
+
+        return HStack(spacing: 0) {
+            tile
+            Button { closeWindow(window) } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: Self.closeButtonSize, height: Self.closeButtonSize)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Fermer la fenêtre")
+            .accessibilityLabel("Fermer \(label)")
+            .disabled(drag != nil)
+            .padding(.trailing, Self.closeButtonInset)
+        }
+        .background {
+            RowHover { inside in
+                if inside { hoveredRow = key }
+                else if hoveredRow == key { hoveredRow = nil }
+            }
+            .accessibilityHidden(true)
+        }
+        .background(highlighted ? Color.accentColor.opacity(0.12) : .clear, in: .rect(cornerRadius: 9))
+        .overlay {
+            if highlighted {
+                RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(Color.accentColor.opacity(0.68))
+                    .allowsHitTesting(false)
             }
         }
         .opacity(drag?.key == key ? 0.32 : 1)
+        .contextMenu {
+            Button("Renommer avec Apple Intelligence", systemImage: "sparkles") { store.refreshNames(for: window) }
+                .disabled(store.isNaming)
+        }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(coordinates)) } action: {
             rowFrames[target, default: [:]][key] = $0
         }
@@ -483,7 +536,7 @@ struct GroupBar: View {
         return text.isEmpty || value.localizedStandardContains(text)
     }
 
-    private func windowCount(_ count: Int) -> String {
+    private static func windowCount(_ count: Int) -> String {
         "\(count) fenêtre\(count > 1 ? "s" : "")"
     }
 

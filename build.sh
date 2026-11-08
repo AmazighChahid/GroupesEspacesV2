@@ -13,6 +13,8 @@ xcrun swiftc -swift-version 6 -parse-as-library -O -whole-module-optimization \
 mv "$work/ProjectHop" "$app/Contents/MacOS/ProjectHop"
 unlink "$work/DockRenderer.o"
 cp Resources/Info.plist "$app/Contents/Info.plist"
+plutil -replace CFBundleIdentifier -string fr.groupesespaces.v2 "$app/Contents/Info.plist"
+plutil -replace CFBundleDisplayName -string ProjectHop "$app/Contents/Info.plist"
 if [ -f Resources/AppIcon.icns ]; then cp Resources/AppIcon.icns "$app/Contents/Resources/"; fi
 identity="${PROJECTHOP_CODESIGN_IDENTITY:-${GROUPES_V2_CODESIGN_IDENTITY:-}}"
 if [ -z "$identity" ]; then

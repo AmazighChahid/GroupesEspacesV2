@@ -1,0 +1,6 @@
+#include "ProjectHop.xcconfig"
+
+CODE_SIGN_ENTITLEMENTS = Resources/ProjectHop-Sandbox.entitlements
+DEVELOPMENT_TEAM = DW466Y5BT2
+ENABLE_APP_SANDBOX = YES
+EXECUTABLE_NAME = ProjectHop

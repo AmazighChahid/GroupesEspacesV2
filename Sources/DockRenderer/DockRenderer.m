@@ -93,6 +93,14 @@ static BOOL LoadDockLayers(void) {
     return material ? [_layer convertRect:material.bounds fromLayer:material] : CGRectNull;
 }
 
+- (BOOL)hideBezelMaterial {
+    if (![_layer respondsToSelector:@selector(_materialRootLayer)]) return NO;
+    CALayer *material = [_layer _materialRootLayer];
+    if (!material) return NO;
+    material.hidden = YES;
+    return YES;
+}
+
 - (BOOL)setBezelFrame:(CGRect)frame tileSize:(unsigned int)tileSize {
     SEL selector = @selector(_setMaterialLayerFrame:tileSize:);
     Method method = class_getInstanceMethod(_layer.class, selector);

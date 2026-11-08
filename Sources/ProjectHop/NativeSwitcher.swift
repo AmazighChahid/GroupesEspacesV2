@@ -2,6 +2,7 @@ import AppKit
 import Carbon
 import CoreGraphics
 import QuartzCore
+import SwiftUI
 import UniformTypeIdentifiers
 
 @MainActor
@@ -34,14 +35,18 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
     }
 
     private let store: GroupStore
+    private let preferences: UserDefaults
+    private let navigationHintPreference = "hasSeenProjectNavigationHint.v1"
     private let activate: (SpaceWindow) -> Void
     private let report: (String) -> Void
     private let organize: (CGRect?) -> Void
     private var panel: Panel?
+    private let backdrop = NSVisualEffectView()
     private var host: NSView?
     private var projectBadge: ProjectBadge?
     private var searchButton: NSButton?
     private var searchField: NSSearchField?
+    private var navigationHint: NSGlassEffectView?
     private var removeBadges: [RemoveBadge] = []
     private var searching = false
     private var scrollDistance = CGPoint.zero
@@ -59,9 +64,10 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
     private var selectedByHover = false
     private var lastPointerLocation: CGPoint?
 
-    init(store: GroupStore, activate: @escaping (SpaceWindow) -> Void,
+    init(store: GroupStore, preferences: UserDefaults, activate: @escaping (SpaceWindow) -> Void,
          report: @escaping (String) -> Void, organize: @escaping (CGRect?) -> Void) {
         self.store = store
+        self.preferences = preferences
         self.activate = activate
         self.report = report
         self.organize = organize
@@ -123,6 +129,7 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
     func dismiss() {
         cancelRelease()
         panel?.orderOut(nil)
+        dismissNavigationHint()
         resetScroll()
         lastPointerLocation = nil
         searching = false
@@ -229,18 +236,26 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
         guard let screen else { return false }
         let width = min(screen.visibleFrame.width - 24, 1500)
         let height = 226 + ProjectBadge.height + 12
-        let canvas = CGRect(x: 32, y: 0, width: width - 64, height: 226)
+        let firstPresentation = !preferences.bool(forKey: navigationHintPreference)
+        let hintGap: CGFloat = 12
+        let canvasSize = CGSize(width: width - 64, height: 226)
         guard let renderer = GELayerRenderer.make(scale: screen.backingScaleFactor,
-                                                   frame: CGRect(origin: .zero, size: canvas.size)) else {
+                                                   frame: CGRect(origin: .zero, size: canvasSize)) else {
             dismiss()
             report("Le calque du Dock de cette version de macOS est incompatible avec ProjectHop.")
             return false
         }
 
         if panel == nil { makePanel() }
-        guard let panel, let host, let projectBadge, let emptyLabel, let searchField, let searchButton else { return false }
-        panel.setFrame(CGRect(x: screen.frame.midX - width / 2, y: screen.frame.midY - height / 2,
-                              width: width, height: height).integral, display: false)
+        guard let panel, let content = panel.contentView, let host, let projectBadge,
+              let emptyLabel, let searchField, let searchButton else { return false }
+        if firstPresentation { showNavigationHint(in: content, width: min(400, width)) }
+        let bottomInset = navigationHint.map { $0.frame.height + hintGap } ?? 0
+        let y = screen.frame.midY - height / 2 - bottomInset
+        let originY = navigationHint == nil ? y : max(screen.visibleFrame.minY, y)
+        panel.setFrame(CGRect(x: screen.frame.midX - width / 2, y: originY,
+                              width: width, height: height + bottomInset).integral, display: false)
+        let canvas = CGRect(origin: CGPoint(x: 32, y: bottomInset), size: canvasSize)
         host.frame = canvas
         host.layer = renderer.layer
         host.wantsLayer = true
@@ -273,6 +288,9 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
             _ = renderer.setBezelFrame(emptyFrame, tileSize: 44)
             emptyLabel.textColor = .labelColor
         }
+        backdrop.frame = bezel
+        backdrop.layer?.cornerRadius = min(32, bezel.height / 2)
+        backdrop.isHidden = !renderer.hideBezelMaterial() && !entries.isEmpty
 
         projectBadge.isHidden = searching
         projectBadge.display(title: title(for: filter), above: bezel)
@@ -280,6 +298,11 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
         searchButton.frame = CGRect(x: bezel.maxX + 7, y: bezel.midY - 17, width: 34, height: 34)
         searchField.isHidden = !searching
         searchField.frame = CGRect(x: canvas.midX - 145, y: canvas.maxY - 8, width: 290, height: 32)
+        if let hint = navigationHint {
+            hint.isHidden = searching
+            hint.frame.origin = CGPoint(x: bezel.midX - hint.frame.width / 2,
+                                        y: bezel.minY - hintGap - hint.frame.height)
+        }
 
         removeBadges.forEach { $0.button.removeFromSuperview() }
         removeBadges.removeAll()
@@ -303,14 +326,42 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
 
         if !panel.isVisible { panel.orderFrontRegardless() }
         if !panel.isKeyWindow { panel.makeKeyAndOrderFront(nil) }
+        if firstPresentation { preferences.set(true, forKey: navigationHintPreference) }
         updateRemoveBadges(at: panel.mouseLocationOutsideOfEventStream)
         if direction != 0 && !entries.isEmpty && PanelMotion.isEnabled {
             let offset = CGFloat(-direction) * 22
             PanelMotion.slide(on: renderer.layer, axis: .y, from: offset)
+            PanelMotion.slide(on: backdrop.layer, axis: .y, from: offset)
             for badge in removeBadges { PanelMotion.slide(on: badge.button.layer, axis: .y, from: offset) }
+        } else {
+            backdrop.layer?.removeAnimation(forKey: PanelMotion.slideKey)
         }
         monitorEvents()
         return true
+    }
+
+    private func showNavigationHint(in content: NSView, width: CGFloat) {
+        let message = NSHostingView(rootView: HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Changer de projet").font(.headline)
+                Text("Utilise les flèches ↑ et ↓ ou fais défiler verticalement sur le trackpad.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Button("Compris") { [weak self] in self?.dismissNavigationHint() }
+        }
+        .padding(14)
+        .frame(width: width))
+        let hint = NSGlassEffectView(frame: CGRect(origin: .zero, size: message.fittingSize))
+        hint.cornerRadius = 18
+        hint.contentView = message
+        content.addSubview(hint)
+        navigationHint = hint
+    }
+
+    private func dismissNavigationHint() {
+        navigationHint?.removeFromSuperview()
+        navigationHint = nil
     }
 
     private func makePanel() {
@@ -326,6 +377,12 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
         panel.acceptsMouseMovedEvents = true
         let content = NSView()
         let host = NSView()
+        backdrop.material = .popover
+        backdrop.blendingMode = .behindWindow
+        backdrop.state = .active
+        backdrop.wantsLayer = true
+        backdrop.layer?.masksToBounds = true
+        backdrop.layer?.cornerCurve = .continuous
         let projectBadge = ProjectBadge(settingsTarget: self, settingsAction: #selector(openProjectSettings))
         let searchButton = makeButton(symbol: "magnifyingglass", label: "Chercher dans tous les espaces (⌘F)",
                                       action: #selector(openSearch))
@@ -337,6 +394,7 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
         let emptyLabel = NSTextField(labelWithString: "Aucune fenêtre dans ce projet")
         emptyLabel.alignment = .center
         emptyLabel.textColor = .white
+        content.addSubview(backdrop)
         content.addSubview(host)
         content.addSubview(emptyLabel)
         content.addSubview(projectBadge)
@@ -522,6 +580,7 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
 
     private func overControl(_ point: CGPoint) -> Bool {
         if projectBadge?.contains(point) == true { return true }
+        if let hint = navigationHint, !hint.isHidden, hint.frame.contains(point) { return true }
         let controls: [NSControl?] = [searchButton, searchField]
         if controls.compactMap({ $0 }).contains(where: { !$0.isHidden && $0.frame.contains(point) }) {
             return true

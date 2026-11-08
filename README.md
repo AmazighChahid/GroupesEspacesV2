@@ -24,12 +24,19 @@ Ouvre le sélecteur avec **⌥ Tab**, puis fais défiler verticalement pour pass
 
 ## Installer ProjectHop
 
-Il faut un Mac Apple Silicon sous macOS 27.2 ou version ultérieure. [Télécharger ProjectHop.dmg](https://github.com/AmazighChahid/ProjectHop/releases/latest/download/ProjectHop.dmg)
+Il faut un Mac Apple Silicon sous macOS 27.2 ou version ultérieure. Choisis une variante.
 
-1. Ouvre le DMG et glisse **ProjectHop** dans **Applications**.
+| Variante | Fonctionnement |
+| --- | --- |
+| [ProjectHop.dmg](https://github.com/AmazighChahid/ProjectHop/releases/latest/download/ProjectHop.dmg) | Version standard, avec activation directe des fenêtres. |
+| [ProjectHop-Sandbox.dmg](https://github.com/AmazighChahid/ProjectHop/releases/latest/download/ProjectHop-Sandbox.dmg) | Version avec App Sandbox. Elle privilégie la méthode Spacewalk pour les transitions entre bureaux quand l’app cible a plusieurs fenêtres. |
+
+Les deux DMG peuvent être installés côte à côte et leurs réglages sont séparés. Lance une seule variante à la fois pour utiliser le raccourci **⌥ Tab**.
+
+1. Ouvre le DMG et glisse l’app dans **Applications**.
 2. Lance l’app et autorise-la dans **Réglages Système → Confidentialité et sécurité → Accessibilité**.
 
-L’app porte une signature de développement, sans notarisation Apple. Si macOS bloque le premier lancement, suis la procédure **Ouvrir quand même**. [Assistance Apple](https://support.apple.com/fr-fr/102445)
+Les deux variantes portent une signature Apple Development, sans notarisation. Si macOS bloque le premier lancement, suis la procédure **Ouvrir quand même**. [Assistance Apple](https://support.apple.com/fr-fr/102445)
 
 ## Utiliser le sélecteur
 
@@ -40,10 +47,16 @@ L’app porte une signature de développement, sans notarisation Apple. Si macOS
 
 ## Compiler depuis les sources
 
-Ouvre `ProjectHop.xcodeproj` dans Xcode avec le SDK macOS 27.2, ou exécute cette commande depuis la racine du dépôt.
+Ouvre `ProjectHop.xcodeproj` dans Xcode avec le SDK macOS 27.2, puis sélectionne le schéma **ProjectHop** ou **ProjectHop Sandbox**. Les deux cibles compilent les mêmes fichiers sous `Sources/` et utilisent la même version dans `Resources/Info.plist`. Le sandbox est activé dans la configuration de la cible Sandbox.
+
+Pour préparer une mise à jour, compile les deux schémas en configuration **Release** depuis le même commit.
 
 ~~~sh
-./build.sh
+xcodebuild -scheme ProjectHop -configuration Release -destination 'generic/platform=macOS' build
+xcodebuild -scheme 'ProjectHop Sandbox' -configuration Release -destination 'generic/platform=macOS' \
+    PRODUCT_BUNDLE_IDENTIFIER=fr.groupesespaces.v2.sandbox DEVELOPMENT_TEAM=32P437V988 build
 ~~~
 
-Le script crée `build/ProjectHop.app`.
+Pour archiver la variante destinée à TestFlight, sélectionne **ProjectHop Sandbox** et **Product → Archive**. Le schéma reprend l’identifiant et l’équipe de signature de la version déjà envoyée à Apple. La commande de compilation ci-dessus remplace ces réglages uniquement pour le DMG GitHub, qui utilise son propre identifiant.
+
+Le raccourci `./build.sh` reste disponible pour compiler la version standard dans `build/ProjectHop.app`.
