@@ -157,7 +157,7 @@ struct GroupBar: View {
                 .background(.indigo.opacity(0.16), in: .rect(cornerRadius: 10))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Groupes d’espaces").font(.headline)
+                Text("ProjectHop").font(.headline)
                 Text("\(windowCount(store.windows?.count ?? 0))  ·  \(store.spaces.count) espaces macOS")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -203,7 +203,7 @@ struct GroupBar: View {
                     NSWorkspace.shared.openApplication(at: url, configuration: .init())
                 }
                 Divider()
-                Button("Quitter Groupes d’espaces V2") { NSApp.terminate(nil) }
+                Button("Quitter ProjectHop") { NSApp.terminate(nil) }
             } label: {
                 Image(systemName: "ellipsis.circle").accessibilityLabel("Options")
             }

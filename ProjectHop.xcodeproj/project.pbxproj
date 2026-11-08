@@ -13,7 +13,7 @@
 /* Begin PBXFileReference section */
 		0F09C22151018348E2E7119C /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		735FAFEAE16F98353ED5A9C2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		FE58F9D1246830075BB7A06F /* GroupesEspacesV2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GroupesEspacesV2.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FE58F9D1246830075BB7A06F /* ProjectHop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ProjectHop.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -51,7 +51,7 @@
 		709620CDAD47AE38630D3A0D /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				FE58F9D1246830075BB7A06F /* GroupesEspacesV2.app */,
+				FE58F9D1246830075BB7A06F /* ProjectHop.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -68,9 +68,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		DA48C11DC0283A0BF147ABEB /* GroupesEspacesV2 */ = {
+		DA48C11DC0283A0BF147ABEB /* ProjectHop */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 3F610D8078BAB4CD3333617A /* Build configuration list for PBXNativeTarget "GroupesEspacesV2" */;
+			buildConfigurationList = 3F610D8078BAB4CD3333617A /* Build configuration list for PBXNativeTarget "ProjectHop" */;
 			buildPhases = (
 				D4DA320E7688D4657E4BD591 /* Sources */,
 				77C2493230EB915D942EB1B4 /* Resources */,
@@ -83,11 +83,11 @@
 				1DD43FF3E6383E5C03E6B9AE /* Sources/DockRenderer */,
 				DF337F8D1676A2034C50B828 /* Sources/GroupesEspaces */,
 			);
-			name = GroupesEspacesV2;
+			name = ProjectHop;
 			packageProductDependencies = (
 			);
-			productName = GroupesEspacesV2;
-			productReference = FE58F9D1246830075BB7A06F /* GroupesEspacesV2.app */;
+			productName = ProjectHop;
+			productReference = FE58F9D1246830075BB7A06F /* ProjectHop.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -105,7 +105,7 @@
 					};
 				};
 			};
-			buildConfigurationList = D80ABDEC87CD3DB08AE84B71 /* Build configuration list for PBXProject "GroupesEspacesV2" */;
+			buildConfigurationList = D80ABDEC87CD3DB08AE84B71 /* Build configuration list for PBXProject "ProjectHop" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -119,7 +119,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				DA48C11DC0283A0BF147ABEB /* GroupesEspacesV2 */,
+				DA48C11DC0283A0BF147ABEB /* ProjectHop */,
 			);
 		};
 /* End PBXProject section */
@@ -312,7 +312,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		3F610D8078BAB4CD3333617A /* Build configuration list for PBXNativeTarget "GroupesEspacesV2" */ = {
+		3F610D8078BAB4CD3333617A /* Build configuration list for PBXNativeTarget "ProjectHop" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				0AF666EA14CC8416226215AC /* Debug */,
@@ -321,7 +321,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		D80ABDEC87CD3DB08AE84B71 /* Build configuration list for PBXProject "GroupesEspacesV2" */ = {
+		D80ABDEC87CD3DB08AE84B71 /* Build configuration list for PBXProject "ProjectHop" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				87C9CC16B2A8A73F56CC3158 /* Debug */,

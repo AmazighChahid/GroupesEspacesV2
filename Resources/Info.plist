@@ -2,9 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
     <key>CFBundleIdentifier</key><string>fr.groupesespaces.v2</string>
-    <key>CFBundleName</key><string>Groupes d’espaces V2</string>
-    <key>CFBundleDisplayName</key><string>Groupes d’espaces V2</string>
-    <key>CFBundleExecutable</key><string>GroupesEspacesV2</string>
+    <key>CFBundleName</key><string>ProjectHop</string>
+    <key>CFBundleDisplayName</key><string>ProjectHop</string>
+    <key>CFBundleExecutable</key><string>ProjectHop</string>
     <key>CFBundleIconFile</key><string>AppIcon.icns</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleVersion</key><string>2</string>

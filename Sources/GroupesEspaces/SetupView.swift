@@ -10,7 +10,7 @@ struct SetupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Bienvenue dans Groupes d’espaces V2").font(.title2.bold())
+                Text("Bienvenue dans ProjectHop").font(.title2.bold())
                 Text("Autorise l’accès à tes fenêtres pour utiliser le sélecteur avec ⌥ Tab.")
                     .foregroundStyle(.secondary)
             }
@@ -19,8 +19,8 @@ struct SetupView: View {
                 HStack(spacing: 12) {
                     DraggableAppIcon()
                         .frame(width: 58, height: 58)
-                        .help("Glisser Groupes d’espaces V2 dans les réglages")
-                        .accessibilityLabel("Icône de Groupes d’espaces V2 à glisser")
+                        .help("Glisser ProjectHop dans les réglages")
+                        .accessibilityLabel("Icône de ProjectHop à glisser")
 
                     VStack(alignment: .leading, spacing: 7) {
                         if accessibilityAllowed {

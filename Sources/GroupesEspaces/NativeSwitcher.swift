@@ -316,7 +316,7 @@ final class NativeSwitcher: NSObject, NSSearchFieldDelegate {
     private func makePanel() {
         let panel = Panel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
                           backing: .buffered, defer: false)
-        panel.title = "Groupes d’espaces V2 — Sélecteur"
+        panel.title = "ProjectHop — Sélecteur"
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.isOpaque = false

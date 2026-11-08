@@ -5,7 +5,7 @@ import QuartzCore
 import SwiftUI
 
 @main
-struct GroupesEspaces {
+struct ProjectHop {
     @MainActor
     static func main() {
         let arguments = Array(CommandLine.arguments.dropFirst())
@@ -94,8 +94,8 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
-            button.image = NSImage(systemSymbolName: "rectangle.3.group", accessibilityDescription: "Groupes d’espaces V2")
-            button.toolTip = "Groupes d’espaces V2"
+            button.image = NSImage(systemSymbolName: "rectangle.3.group", accessibilityDescription: "ProjectHop")
+            button.toolTip = "ProjectHop"
         }
         statusItem = item
         registerHotkey()
@@ -116,7 +116,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         accessibility.target = self
         menu.addItem(accessibility)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quitter Groupes d’espaces V2", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(withTitle: "Quitter ProjectHop", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
 
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -208,7 +208,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
             contentRect: NSRect(x: 0, y: 0, width: 470, height: 236),
             styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false
         )
-        panel.title = "Configuration de Groupes d’espaces V2"
+        panel.title = "Configuration de ProjectHop"
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.level = .floating
@@ -264,7 +264,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         let windowFrame = source.map { target.union($0).integral } ?? target
         let panel = GroupPanel(contentRect: windowFrame, styleMask: [.borderless, .nonactivatingPanel],
                                backing: .buffered, defer: false)
-        panel.title = "Organiser les projets — Groupes d’espaces V2"
+        panel.title = "Organiser les projets — ProjectHop"
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.isOpaque = false

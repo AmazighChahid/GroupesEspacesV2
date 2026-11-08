@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "DA48C11DC0283A0BF147ABEB"
-               BuildableName = "GroupesEspacesV2.app"
-               BlueprintName = "GroupesEspacesV2"
-               ReferencedContainer = "container:GroupesEspacesV2.xcodeproj">
+               BuildableName = "ProjectHop.app"
+               BlueprintName = "ProjectHop"
+               ReferencedContainer = "container:ProjectHop.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -33,9 +33,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "DA48C11DC0283A0BF147ABEB"
-            BuildableName = "GroupesEspacesV2.app"
-            BlueprintName = "GroupesEspacesV2"
-            ReferencedContainer = "container:GroupesEspacesV2.xcodeproj">
+            BuildableName = "ProjectHop.app"
+            BlueprintName = "ProjectHop"
+            ReferencedContainer = "container:ProjectHop.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -56,9 +56,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "DA48C11DC0283A0BF147ABEB"
-            BuildableName = "GroupesEspacesV2.app"
-            BlueprintName = "GroupesEspacesV2"
-            ReferencedContainer = "container:GroupesEspacesV2.xcodeproj">
+            BuildableName = "ProjectHop.app"
+            BlueprintName = "ProjectHop"
+            ReferencedContainer = "container:ProjectHop.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -73,9 +73,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "DA48C11DC0283A0BF147ABEB"
-            BuildableName = "GroupesEspacesV2.app"
-            BlueprintName = "GroupesEspacesV2"
-            ReferencedContainer = "container:GroupesEspacesV2.xcodeproj">
+            BuildableName = "ProjectHop.app"
+            BlueprintName = "ProjectHop"
+            ReferencedContainer = "container:ProjectHop.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

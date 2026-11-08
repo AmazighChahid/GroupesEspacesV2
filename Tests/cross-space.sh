@@ -40,7 +40,7 @@ if [ ! -s "$work/fixture.json" ]; then
     exit 1
 fi
 : > "$results"
-open -g -n -W -a "$PWD/build/Groupes d’espaces V2.app" \
+open -g -n -W -a "$PWD/build/ProjectHop.app" \
     --stdout "$results" --stderr "$results" --args --verify-spaces "$work/fixture.json"
 cat "$results"
 test "$(grep -c '^PASS ' "$results")" -eq 3

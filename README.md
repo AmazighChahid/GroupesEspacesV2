@@ -1,10 +1,14 @@
-# Groupes d’espaces V2
+# ProjectHop
 
-Groupes d’espaces V2 est un sélecteur de fenêtres pour macOS. Réunis dans un projet les fenêtres dont tu as besoin, même si elles se trouvent sur des bureaux différents ou en plein écran.
+<img src="docs/branding/projecthop-logo.png#gh-light-mode-only" alt="Logo ProjectHop" width="260">
+
+ProjectHop est un sélecteur de fenêtres pour macOS. Réunis dans un projet les fenêtres dont tu as besoin, même si elles se trouvent sur des bureaux différents ou en plein écran.
+
+![Bannière ProjectHop avec le logo Hop Arc bleu azur et le texte « Switch windows by project. »](docs/branding/projecthop-github-banner.png)
 
 ## Démonstration
 
-![Démo animée de Groupes d’espaces V2. Le raccourci Option Tab rassemble les fenêtres d’un projet réparties sur plusieurs bureaux.](docs/groupes-espaces-v2-demo.gif)
+![Démo animée du sélecteur. Le raccourci Option Tab rassemble les fenêtres d’un projet réparties sur plusieurs bureaux.](docs/groupes-espaces-v2-demo.gif)
 
 [Voir la démo en 1080p avec le son](https://github.com/AmazighChahid/GroupesEspacesV2/releases/download/v2.0/GroupesEspacesV2-motion.mp4)
 
@@ -12,7 +16,7 @@ Groupes d’espaces V2 est un sélecteur de fenêtres pour macOS. Réunis dans u
 
 Il faut un Mac Apple Silicon sous macOS 27.2 ou version ultérieure. [Télécharger le DMG](https://github.com/AmazighChahid/GroupesEspacesV2/releases/download/v2.0/GroupesEspacesV2-2.0.dmg)
 
-1. Ouvre le DMG et glisse **Groupes d’espaces V2** dans **Applications**.
+1. Ouvre le DMG et glisse **Groupes d’espaces V2**, le nom de ProjectHop dans la version 2.0, dans **Applications**.
 2. Lance l’app et autorise-la dans **Réglages Système → Confidentialité et sécurité → Accessibilité**.
 
 L’app porte une signature de développement, sans notarisation Apple. Si macOS bloque le premier lancement, suis la procédure **Ouvrir quand même**. [Assistance Apple](https://support.apple.com/fr-fr/102445)
@@ -26,10 +30,10 @@ L’app porte une signature de développement, sans notarisation Apple. Si macOS
 
 ## Compiler depuis les sources
 
-Ouvre le projet dans Xcode avec le SDK macOS 27.2, ou exécute cette commande depuis la racine du dépôt.
+Ouvre `ProjectHop.xcodeproj` dans Xcode avec le SDK macOS 27.2, ou exécute cette commande depuis la racine du dépôt.
 
 ~~~sh
 ./build.sh
 ~~~
 
-Le script crée l’app dans le dossier build.
+Le script crée `build/ProjectHop.app`.

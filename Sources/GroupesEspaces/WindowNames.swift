@@ -60,7 +60,7 @@ enum WindowNames {
 @MainActor
 enum WindowCommand {
     static func run(_ args: [String]) throws {
-        let usage = "groupes-espaces fenetres | groupes-espaces renommer <id> <nom>"
+        let usage = "ProjectHop fenetres | ProjectHop renommer <id> <nom>"
         guard args == ["fenetres"]
             || (args.count == 3 && args[0] == "renommer") else {
             throw CommandError(usage)
