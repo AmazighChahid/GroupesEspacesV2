@@ -94,9 +94,7 @@ final class GroupBarApp: NSObject, NSApplicationDelegate {
         }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
-            let image = NSImage(systemSymbolName: "rectangle.3.group", accessibilityDescription: "ProjectHop")
-            image?.isTemplate = true
-            button.image = image
+            button.image = ProjectHopIcon.menuBarImage
             button.setAccessibilityLabel("ProjectHop")
             button.toolTip = "ProjectHop"
         }
