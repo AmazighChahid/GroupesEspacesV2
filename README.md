@@ -2,6 +2,12 @@
 
 Groupes d’espaces V2 est un sélecteur de fenêtres pour macOS. Réunis dans un projet les fenêtres dont tu as besoin, même si elles se trouvent sur des bureaux différents ou en plein écran.
 
+## Démonstration
+
+![Démo animée de Groupes d’espaces V2. Le raccourci Option Tab rassemble les fenêtres d’un projet réparties sur plusieurs bureaux.](docs/groupes-espaces-v2-demo.gif)
+
+[Voir la démo en 1080p avec le son](https://github.com/AmazighChahid/GroupesEspacesV2/releases/download/v2.0/GroupesEspacesV2-motion.mp4)
+
 ## Installer la version 2.0
 
 Il faut un Mac Apple Silicon sous macOS 27.2 ou version ultérieure. [Télécharger le DMG](https://github.com/AmazighChahid/GroupesEspacesV2/releases/download/v2.0/GroupesEspacesV2-2.0.dmg)
